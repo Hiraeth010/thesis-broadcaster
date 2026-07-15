@@ -20,6 +20,9 @@ const SECRET_FIELDS = new Set([
 const DEFAULTS = {
   wallet: '',
   referralLink: '',
+  // Per-channel, because on X a link turns a $0.015 post into a $0.200 one.
+  // Discord and Telegram are free, so the link rides along there by default.
+  referralChannels: { discord: true, telegram: true, x: false },
   autoBroadcast: true,
   rpcUrl: '',
   heliusApiKey: '',

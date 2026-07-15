@@ -1,6 +1,6 @@
 import { getSettings } from '../settings.js'
 import { config } from '../config.js'
-import { contractAddress, headline, solscanUrl } from './format.js'
+import { contractAddress, headline, referralFor, solscanUrl } from './format.js'
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -33,14 +33,14 @@ async function call(botToken, method, payload) {
 }
 
 export async function send(trade, variant = 'alert') {
-  const { telegram, referralLink } = getSettings()
+  const { telegram } = getSettings()
   if (!telegram.botToken || !telegram.chatId) {
     return { ok: false, skipped: true, reason: 'telegram not configured' }
   }
 
   const { res, json } = await call(telegram.botToken, 'sendMessage', {
     chat_id: telegram.chatId,
-    text: bodyFor(trade, variant, referralLink),
+    text: bodyFor(trade, variant, referralFor('telegram')),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })

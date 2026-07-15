@@ -25,15 +25,25 @@ export function contractAddress(trade) {
   return trade.asset.mint
 }
 
-export function plainText(trade, variant = 'thesis') {
-  const { referralLink } = getSettings()
+/**
+ * The referral link is per-channel: on X a post containing a link costs $0.200
+ * instead of $0.015, so it is opt-in there and on by default everywhere else.
+ */
+export function referralFor(channel) {
+  const { referralLink, referralChannels } = getSettings()
+  if (!referralLink) return ''
+  return referralChannels?.[channel] ? referralLink : ''
+}
+
+export function plainText(trade, variant = 'thesis', channel = 'x') {
   const lines = [headline(trade)]
 
   if (variant === 'thesis') {
     if (trade.thesis?.trim()) lines.push(trade.thesis.trim())
     lines.push(`CA: ${contractAddress(trade)}`)
   }
-  if (referralLink) lines.push(referralLink)
+  const referral = referralFor(channel)
+  if (referral) lines.push(referral)
 
   return lines.filter(Boolean).join('\n\n')
 }

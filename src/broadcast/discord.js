@@ -1,5 +1,5 @@
 import { getSettings } from '../settings.js'
-import { contractAddress, fmtNum, headline, solscanUrl } from './format.js'
+import { contractAddress, fmtNum, headline, referralFor, solscanUrl } from './format.js'
 
 function embedFor(trade, variant, referralLink) {
   const isThesis = variant === 'thesis'
@@ -27,13 +27,13 @@ function embedFor(trade, variant, referralLink) {
 }
 
 export async function send(trade, variant = 'alert') {
-  const { discord, referralLink } = getSettings()
+  const { discord } = getSettings()
   if (!discord.webhookUrl) return { ok: false, skipped: true, reason: 'discord not configured' }
 
   const res = await fetch(`${discord.webhookUrl}?wait=true`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ embeds: [embedFor(trade, variant, referralLink)] }),
+    body: JSON.stringify({ embeds: [embedFor(trade, variant, referralFor('discord'))] }),
   })
 
   if (!res.ok) {

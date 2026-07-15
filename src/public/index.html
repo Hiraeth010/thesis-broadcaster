@@ -135,7 +135,17 @@
             locked: locked.wallet,
             hint: 'Swaps from this wallet trigger a broadcast.',
           })}
-          ${field('referralLink', 'Referral link (appended to every post)', s.referralLink)}
+          ${field('referralLink', 'Referral link', s.referralLink)}
+          <div class="switch" style="gap:14px; flex-wrap:wrap">
+            <span class="hint" style="margin:0">add it to:</span>
+            <label style="margin:0"><input type="checkbox" id="ref.discord" ${s.referralChannels?.discord ? 'checked' : ''} /> Discord</label>
+            <label style="margin:0"><input type="checkbox" id="ref.telegram" ${s.referralChannels?.telegram ? 'checked' : ''} /> Telegram</label>
+            <label style="margin:0"><input type="checkbox" id="ref.x" ${s.referralChannels?.x ? 'checked' : ''} /> X <span class="bad">(+$0.185/post)</span></label>
+          </div>
+          <div class="hint">
+            Free on Discord and Telegram. On X a post with a link costs $0.200 instead of
+            $0.015, so it's off there by default.
+          </div>
 
           <details style="margin-top:14px">
             <summary>Connection (optional — works without this)</summary>
@@ -170,19 +180,22 @@
             <span class="status" id="discover-status"></span>
           </div>
 
-          <label>X — bring your own app keys</label>
-          <div class="grid">
-            <div>${field('x.apiKey', 'API key', s.x.apiKey, { locked: locked.x, type: 'password', isSet: set['x.apiKey'] })}</div>
-            <div>${field('x.apiSecret', 'API secret', s.x.apiSecret, { locked: locked.x, type: 'password', isSet: set['x.apiSecret'] })}</div>
-            <div>${field('x.accessToken', 'Access token', s.x.accessToken, { locked: locked.x, type: 'password', isSet: set['x.accessToken'] })}</div>
-            <div>${field('x.accessSecret', 'Access secret', s.x.accessSecret, { locked: locked.x, type: 'password', isSet: set['x.accessSecret'] })}</div>
-          </div>
-          <div class="hint">
-            <span class="bad">X has no free tier since Feb 2026.</span>
-            It bills per post: <b>$0.015</b>, or <b>$0.20</b> if the post contains a link.
-            Your referral link is a link — leaving it blank makes X posts ~13× cheaper.
-            Your own app from developer.x.com, so the bill is yours.
-          </div>
+          <details style="margin-top:14px">
+            <summary>X — optional, and it costs money</summary>
+            <div class="hint" style="margin:8px 0 4px">
+              <span class="bad">X has no free tier since Feb 2026.</span> It bills per post:
+              <b>$0.015</b>, or <b>$0.200</b> if the post contains a link — roughly
+              <b>$0.03–$0.40 per trade</b> once the alert and thesis both go out.
+              Discord and Telegram are free; most people should just use those.
+              You bring your own app from developer.x.com, so the bill is yours.
+            </div>
+            <div class="grid">
+              <div>${field('x.apiKey', 'API key', s.x.apiKey, { locked: locked.x, type: 'password', isSet: set['x.apiKey'] })}</div>
+              <div>${field('x.apiSecret', 'API secret', s.x.apiSecret, { locked: locked.x, type: 'password', isSet: set['x.apiSecret'] })}</div>
+              <div>${field('x.accessToken', 'Access token', s.x.accessToken, { locked: locked.x, type: 'password', isSet: set['x.accessToken'] })}</div>
+              <div>${field('x.accessSecret', 'Access secret', s.x.accessSecret, { locked: locked.x, type: 'password', isSet: set['x.accessSecret'] })}</div>
+            </div>
+          </details>
 
           <div class="switch">
             <input type="checkbox" id="autoBroadcast" ${s.autoBroadcast ? 'checked' : ''} />
@@ -209,6 +222,11 @@
             body: JSON.stringify({
               wallet: val('wallet'),
               referralLink: get('referralLink').value.trim(),
+              referralChannels: {
+                discord: get('ref.discord').checked,
+                telegram: get('ref.telegram').checked,
+                x: get('ref.x').checked,
+              },
               autoBroadcast: get('autoBroadcast').checked,
               heliusApiKey: val('heliusApiKey') ?? '',
               rpcUrl: get('rpcUrl').disabled ? undefined : get('rpcUrl').value.trim(),

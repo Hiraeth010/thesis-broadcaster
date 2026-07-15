@@ -1,6 +1,6 @@
 import { TwitterApi } from 'twitter-api-v2'
 import { getSettings } from '../settings.js'
-import { contractAddress, headline } from './format.js'
+import { contractAddress, headline, referralFor } from './format.js'
 
 const LIMIT = 280
 
@@ -40,9 +40,10 @@ export async function send(trade, variant = 'alert') {
   const api = client()
   if (!api) return { ok: false, skipped: true, reason: 'x not configured' }
 
-  const { referralLink } = getSettings()
+  // referralFor('x') is off by default: a link makes this post cost $0.200
+  // instead of $0.015.
   try {
-    const { data } = await api.v2.tweet(composeX(trade, variant, referralLink))
+    const { data } = await api.v2.tweet(composeX(trade, variant, referralFor('x')))
     return { ok: true, ref: data?.id ?? null }
   } catch (err) {
     return { ok: false, reason: `x: ${err.message}` }
