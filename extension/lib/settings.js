@@ -5,6 +5,14 @@
 // global: an MV3 service worker is torn down between alarms, so a module-level
 // cache would be stale or empty half the time.
 
+// Where fomo posts a thesis. Verified two ways: their bundle calls
+// C("/trades/comment", {method:"POST", body: JSON.stringify({tradeId, comment,
+// visibility:"public"})}), and live traffic confirms the same host and shape.
+export const KNOWN_FOMO_THESIS = {
+  pattern: 'prod-api.fomo.family/trades/comment',
+  field: 'comment',
+}
+
 export const DEFAULTS = {
   wallet: '',
   // Just typed in. Looking it up would mean querying fomo for who owns a
@@ -21,8 +29,11 @@ export const DEFAULTS = {
   discord: { webhookUrl: '' },
   telegram: { botToken: '', chatId: '' },
   x: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
-  // Learned from your own fomo traffic — see lib/learn.js
-  learn: { pattern: '', field: '', learnedAt: 0 },
+  // fomo's thesis endpoint, confirmed from their own bundle and from live
+  // traffic: C("/trades/comment", {body: JSON.stringify({tradeId, comment, visibility})}).
+  // It ships as the default so nothing has to be picked — the picker in
+  // lib/learn.js is only a fallback for when fomo changes this.
+  learn: { ...KNOWN_FOMO_THESIS, learnedAt: 0 },
 }
 
 export const SECRET_FIELDS = [
@@ -66,7 +77,15 @@ function deepMerge(...sources) {
 
 export async function loadSettings() {
   const { settings } = await chrome.storage.local.get('settings')
-  return deepMerge(DEFAULTS, settings ?? {})
+  const merged = deepMerge(DEFAULTS, settings ?? {})
+
+  // An empty pattern means "nothing chosen", not "disconnected" — fall back to
+  // the known endpoint. Without this, anyone who ever hit Forget (or installed
+  // before the default existed) would be stuck picking by hand forever.
+  if (!merged.learn?.pattern || !merged.learn?.field) {
+    merged.learn = { ...KNOWN_FOMO_THESIS, learnedAt: merged.learn?.learnedAt ?? 0 }
+  }
+  return merged
 }
 
 /**

@@ -22,17 +22,21 @@ async function load() {
   }
 
   if (learned) {
-    state.innerHTML = `<span class="ok">Connected.</span> Theses you post on fomo broadcast automatically.`
+    state.innerHTML = `<span class="ok">Ready.</span> Write a thesis on fomo and it broadcasts itself. Nothing to pick.`
     body.innerHTML = `
       <div class="card">
         <div class="path">${esc(learned)}</div>
         <div class="path">field: ${esc(s.settings.learn.field)}</div>
       </div>
-      <div class="row">
-        ${openOptions}
-        <button id="forget">Forget and relearn</button>
-      </div>
-      <div class="sub" style="margin-top:8px">Use relearn if fomo changes and theses stop going out.</div>`
+      ${openOptions}
+      <details style="margin-top:10px">
+        <summary>Theses not going out?</summary>
+        <div class="sub" style="margin-top:6px">
+          This uses fomo's known thesis endpoint. If they change it, reset here and
+          post a thesis — you'll be able to pick the new one by hand.
+        </div>
+        <div class="row" style="margin-top:8px"><button id="forget">Reset</button></div>
+      </details>`
     wire()
     return
   }

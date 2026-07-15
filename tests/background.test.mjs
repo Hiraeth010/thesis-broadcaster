@@ -188,41 +188,92 @@ check('X carries the CA', xThesis.includes(PUNCH))
 check('X has NO link — a link costs 13x more', !/https?:\/\//.test(xThesis), xThesis)
 check('X still fits 280', xThesis.length <= 280, String(xThesis.length))
 
-console.log('\nLearning posts the thesis you just pointed at\n')
+console.log('\nIt works out of the box — nothing to pick\n')
 {
-  // Reproduces the real report: fomo posts theses to prod-api.fomo.family/trades/comment
-  // with the text in `comment`. Previously the thesis used to TEACH it was
-  // silently dropped, because matching only fires on the NEXT request.
+  // fomo's endpoint is known, so a fresh install must broadcast a thesis with
+  // no setup at all. Making people pick it from a list was busywork.
+  store.delete('settings')
+  store.delete('trades')
+  store.delete('cursor')
+  await send({
+    type: 'saveSettings',
+    patch: { wallet: WALLET, discord: { webhookUrl: 'https://discord.com/api/webhooks/1/abc' } },
+  })
+
+  const fresh = await send({ type: 'getState' })
+  check('a fresh install is already pointed at fomo', fresh.settings.learn.pattern === 'prod-api.fomo.family/trades/comment', JSON.stringify(fresh.settings.learn))
+  check('with the right field', fresh.settings.learn.field === 'comment')
+
+  // First poll only baselines, so a second one is needed to actually record a
+  // trade for the thesis to attach to.
+  rpcSigs = [{ signature: 'sigBaseline55555555555555555555555555555', err: null }]
+  await send({ type: 'pollNow' })
+  rpcSigs = [{ signature: 'sigDefault5555555555555555555555555555555', err: null }]
+  await send({ type: 'pollNow' })
+  const before = discordPosts.length
+  check('a trade exists to attach a thesis to', (await send({ type: 'getState' })).trades.length === 1)
+
+  const r = await send({
+    type: 'observed',
+    payload: {
+      transport: 'fetch', method: 'POST',
+      url: 'https://prod-api.fomo.family/trades/comment',
+      body: { tradeId: 'abc123', comment: 'Zero setup: this should just post.', visibility: 'public' },
+      at: Date.now(),
+    },
+  })
+  check('a thesis broadcasts with NO picking whatsoever', r.broadcast === true, JSON.stringify(r))
+  check('the message went out', discordPosts.length === before + 1)
+
+  // Someone who hit "Forget" on an older build has an empty pattern stored.
+  await send({ type: 'saveSettings', patch: { learn: { pattern: '', field: '' } } })
+  const healed = await send({ type: 'getState' })
+  check('an empty stored pattern falls back to the default', healed.settings.learn.pattern === 'prod-api.fomo.family/trades/comment', JSON.stringify(healed.settings.learn))
+
+  // Reset restores the default rather than leaving it disconnected.
   await send({ type: 'forget' })
+  const afterForget = await send({ type: 'getState' })
+  check('reset returns to fomo\'s endpoint, not to nothing', afterForget.settings.learn.pattern === 'prod-api.fomo.family/trades/comment')
+}
+
+console.log('\nThe picker still works if fomo ever changes the endpoint\n')
+{
+  // The default covers today's fomo. This is the fallback: if they move the
+  // thesis somewhere else, that request won't match, and picking it must both
+  // learn it AND post the thesis that taught it — otherwise the first thesis
+  // you write after a fomo change is silently lost.
   const before = discordPosts.length
 
   rpcSigs = [{ signature: 'sigLearn44444444444444444444444444444444', err: null }]
   await send({ type: 'pollNow' })
   check('a fresh trade to attach to', discordPosts.length === before + 1)
 
-  const comment = {
+  const moved = {
     type: 'observed',
     payload: {
       transport: 'fetch',
       method: 'POST',
-      url: 'https://prod-api.fomo.family/trades/comment',
-      body: { tradeId: 'abc123', comment: 'Reflexive floor while the story is still being told.' },
+      url: 'https://prod-api.fomo.family/v3/thesis/create',
+      body: { tradeId: 'abc123', text: 'fomo moved the endpoint and this still works.' },
       at: Date.now(),
     },
   }
-  const seen = await send(comment)
-  check('nothing broadcasts before it is taught', seen.broadcast === false)
+  const seen = await send(moved)
+  check('an unknown endpoint does not match the default', seen.broadcast === false, JSON.stringify(seen))
 
   const cands = (await send({ type: 'getState' })).candidates
-  const c = cands.find((x) => x.pattern === 'prod-api.fomo.family/trades/comment')
-  check('the real fomo endpoint is offered as a candidate', Boolean(c), JSON.stringify(cands.map((x) => x.pattern)))
-  check('with `comment` as the field', c?.fields?.some((f) => f.path === 'comment'))
+  const c = cands.find((x) => x.pattern === 'prod-api.fomo.family/v3/thesis/create')
+  check('the moved endpoint is offered as a candidate', Boolean(c), JSON.stringify(cands.map((x) => x.pattern)))
+  check('with its prose field found', c?.fields?.some((f) => f.path === 'text'))
 
-  const learned = await send({ type: 'learn', pattern: c.pattern, field: 'comment' })
-  check('teaching it ALSO posts that thesis', learned.broadcast === true, JSON.stringify(learned))
+  const learned = await send({ type: 'learn', pattern: c.pattern, field: 'text' })
+  check('picking it ALSO posts that thesis', learned.broadcast === true, JSON.stringify(learned))
   check('a thesis message actually went out', discordPosts.length === before + 2)
   check('and it carries the CA', discordPosts.at(-1).fields.some((f) => f.name === 'CA'))
-  check('and the thesis text', discordPosts.at(-1).description?.includes('Reflexive floor'))
+  check('and the thesis text', discordPosts.at(-1).description?.includes('fomo moved the endpoint'))
+
+  // Back to the default so later blocks start from the shipped behaviour.
+  await send({ type: 'forget' })
 }
 
 console.log('\nOld trades stored with a short mint get healed\n')

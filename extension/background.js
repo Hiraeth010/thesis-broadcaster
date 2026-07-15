@@ -1,4 +1,4 @@
-import { loadSettings, saveSettings, publicSettings, enabledChannels } from './lib/settings.js'
+import { loadSettings, saveSettings, publicSettings, enabledChannels, KNOWN_FOMO_THESIS } from './lib/settings.js'
 import { addTrade, getTrade, listTrades, updateTrade, setStatus, getStatus, clearCursor } from './lib/store.js'
 import { poll, checkRpc, rpcUrl, redactRpc } from './lib/poller.js'
 import { resolveToken } from './lib/tokens.js'
@@ -224,8 +224,11 @@ const handlers = {
     return { learn: settings.learn, broadcast }
   },
 
+  // Resets to fomo's known endpoint rather than to nothing — "it stopped
+  // working" almost always means a bad custom pick, not that the default is
+  // wrong. Picking something else still overrides it.
   forget: async () => {
-    await saveSettings({ learn: { pattern: '', field: '', learnedAt: 0 } })
+    await saveSettings({ learn: { ...KNOWN_FOMO_THESIS, learnedAt: 0 } })
     await learn.clearCandidates()
     return { learn: (await loadSettings()).learn }
   },
