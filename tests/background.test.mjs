@@ -242,5 +242,35 @@ console.log('\nOld trades stored with a short mint get healed\n')
   check('one message sent', discordPosts.length === before + 1)
 }
 
+console.log('\nA second thesis on the same trade still posts\n')
+{
+  // The reported bug: matching only considered trades with NO thesis yet, so
+  // once a trade had one, every later thesis silently attached to some older
+  // trade or to nothing. Re-posting could never work.
+  const before = discordPosts.length
+  const post = (text) =>
+    send({
+      type: 'observed',
+      payload: {
+        transport: 'fetch',
+        method: 'POST',
+        url: 'https://prod-api.fomo.family/trades/comment',
+        body: { tradeId: 'abc123', comment: text },
+        at: Date.now(),
+      },
+    })
+
+  const first = await post('First thesis about the trade I just made.')
+  check('first thesis posts', first.broadcast === true, JSON.stringify(first))
+
+  const second = await post('Revised call: adding here, same thesis.')
+  check('a SECOND, different thesis on the same trade also posts', second.broadcast === true, JSON.stringify(second))
+  check('two separate messages went out', discordPosts.length === before + 2)
+
+  const dupe = await post('Revised call: adding here, same thesis.')
+  check('but the identical text is still deduped', dupe.broadcast === false, JSON.stringify(dupe))
+  check('no third message', discordPosts.length === before + 2)
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`)
 process.exit(fail ? 1 : 0)

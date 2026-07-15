@@ -95,7 +95,11 @@ async function tradeForThesis(mint) {
     const byMint = trades.find((t) => t.asset.mint === mint)
     if (byMint) return byMint
   }
-  return trades.find((t) => !t.thesis?.trim()) ?? null
+  // The most recent trade, even if it already has a thesis: a thesis you just
+  // wrote is about the trade you just made, and revising one is normal. Only
+  // taking untouched trades meant a second thesis silently attached to some
+  // older trade, or to nothing at all. Identical text is deduped by the caller.
+  return trades[0] ?? null
 }
 
 async function postThesis(settings, trade, thesis) {
@@ -116,19 +120,35 @@ async function onObserved(payload) {
   const settings = await loadSettings()
   await learn.record(payload)
 
+  // Every outcome is logged. A thesis that doesn't go out used to leave no
+  // trace at all, which made it impossible to tell "not taught yet" from
+  // "taught but nothing matched" from "sent, and Discord rejected it".
   const hit = learn.match(settings.learn, payload)
-  if (!hit) return { observed: true, broadcast: false }
+  if (!hit) {
+    if (settings.learn?.pattern && learn.urlPattern(payload.url) === settings.learn.pattern) {
+      console.log(
+        `[ext] matched ${settings.learn.pattern} but field "${settings.learn.field}" wasn't prose — got:`,
+        JSON.stringify(payload.body).slice(0, 200)
+      )
+    }
+    return { observed: true, broadcast: false }
+  }
 
   const trade = await tradeForThesis(hit.mint)
-  if (!trade) return { observed: true, broadcast: false, reason: 'no matching trade' }
+  if (!trade) {
+    console.log('[ext] thesis seen, but there are no trades to attach it to yet')
+    return { observed: true, broadcast: false, reason: 'no matching trade' }
+  }
   if (trade.thesis?.trim() === hit.thesis) {
+    console.log(`[ext] thesis already posted for ${trade.id}, skipping`)
     return { observed: true, broadcast: false, reason: 'already posted' }
   }
 
-  const { ok } = await postThesis(settings, trade, hit.thesis)
-  console.log(`[ext] thesis from fomo -> ${trade.id} -> ${ok ? 'broadcast' : 'failed'}`)
+  const { ok, results } = await postThesis(settings, trade, hit.thesis)
+  console.log(`[ext] thesis from fomo -> ${trade.id} (${trade.asset.symbol}) -> ${ok ? 'broadcast' : 'FAILED'}`)
+  if (!ok) console.log('[ext] channel results:', JSON.stringify(results))
   await badge(ok ? 'sent' : 'fail', ok ? '#22c55e' : '#ef4444')
-  return { observed: true, broadcast: ok }
+  return { observed: true, broadcast: ok, results }
 }
 
 // One message router for the hook, the popup and the options page.
