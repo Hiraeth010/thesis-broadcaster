@@ -1,82 +1,111 @@
 import express from 'express'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertConfig, config, enabledChannels } from './config.js'
+import { config } from './config.js'
+import { enabledChannels, envLocked, getSettings, maskedSettings, saveSettings } from './settings.js'
 import { parseWebhookBody } from './parse.js'
 import { addTrade, getTrade, listTrades, updateTrade } from './store.js'
-import { broadcast } from './broadcast/index.js'
-import { plainText } from './broadcast/format.js'
-
-assertConfig()
+import { sendAll, editAll } from './broadcast/index.js'
+import { discoverChatId } from './broadcast/telegram.js'
 
 const app = express()
 app.use(express.json({ limit: '5mb' }))
 app.use(express.static(join(dirname(fileURLToPath(import.meta.url)), 'public')))
 
-app.post('/webhook', (req, res) => {
+function anyOk(results) {
+  return Object.values(results).some((r) => r.ok)
+}
+
+async function alert(trade) {
+  const results = await sendAll(trade)
+  const ok = anyOk(results)
+  return updateTrade(trade.id, {
+    status: ok ? 'alerted' : 'failed',
+    alertedAt: ok ? Date.now() : null,
+    results,
+  })
+}
+
+app.post('/webhook', async (req, res) => {
   if (config.webhookAuth && req.get('authorization') !== config.webhookAuth) {
     return res.status(401).json({ error: 'bad auth header' })
   }
 
-  const swaps = parseWebhookBody(req.body, config.wallet)
+  const { wallet, autoBroadcast } = getSettings()
+  if (!wallet) return res.status(400).json({ error: 'wallet not configured' })
+
+  const swaps = parseWebhookBody(req.body, wallet)
   const added = swaps.map(addTrade).filter(Boolean)
 
-  for (const trade of added) {
-    console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id} (awaiting thesis)`)
-  }
-
+  // Respond before broadcasting so a slow channel can't make Helius retry.
   res.json({ received: swaps.length, queued: added.length })
+
+  for (const trade of added) {
+    console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id}`)
+    if (!autoBroadcast) continue
+    const updated = await alert(trade)
+    console.log(`[alert] ${trade.id} -> ${updated.status}`)
+  }
 })
 
 app.get('/api/trades', (_req, res) => {
-  res.json({ trades: listTrades(), channels: enabledChannels() })
+  res.json({ trades: listTrades(), channels: enabledChannels(), settings: maskedSettings() })
 })
 
-app.get('/api/trades/:id/preview', (req, res) => {
+app.get('/api/settings', (_req, res) => {
+  res.json({ settings: maskedSettings(), channels: enabledChannels(), locked: envLocked() })
+})
+
+app.put('/api/settings', (req, res) => {
+  saveSettings(req.body ?? {})
+  res.json({ settings: maskedSettings(), channels: enabledChannels() })
+})
+
+app.post('/api/settings/telegram/discover', async (req, res) => {
+  const token = req.body?.botToken || getSettings().telegram.botToken
+  if (!token) return res.status(400).json({ error: 'no bot token set' })
+  res.json(await discoverChatId(token))
+})
+
+app.post('/api/trades/:id/alert', async (req, res) => {
   const trade = getTrade(req.params.id)
   if (!trade) return res.status(404).json({ error: 'not found' })
-  res.json({ preview: plainText(trade) })
-})
-
-app.put('/api/trades/:id/thesis', (req, res) => {
-  const trade = updateTrade(req.params.id, { thesis: String(req.body.thesis ?? '') })
-  if (!trade) return res.status(404).json({ error: 'not found' })
-  res.json({ trade })
-})
-
-app.post('/api/trades/:id/broadcast', async (req, res) => {
-  const trade = getTrade(req.params.id)
-  if (!trade) return res.status(404).json({ error: 'not found' })
-  if (trade.status === 'broadcast') {
+  if (trade.status === 'alerted' || trade.status === 'enriched') {
     return res.status(409).json({ error: 'already broadcast' })
   }
-  if (!trade.thesis.trim()) {
-    return res.status(400).json({ error: 'write a thesis first' })
-  }
+  const updated = await alert(trade)
+  res.json({ trade: updated, results: updated.results })
+})
 
-  const results = await broadcast(trade, req.body.targets)
-  const anySent = Object.values(results).some((r) => r.ok)
+app.put('/api/trades/:id/thesis', async (req, res) => {
+  const thesis = String(req.body?.thesis ?? '')
+  const existing = getTrade(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'not found' })
+  if (!thesis.trim()) return res.status(400).json({ error: 'thesis is empty' })
+
+  const trade = updateTrade(existing.id, { thesis })
+  const results = trade.status === 'queued' ? await sendAll(trade) : await editAll(trade)
+  const ok = anyOk(results)
 
   const updated = updateTrade(trade.id, {
-    status: anySent ? 'broadcast' : 'failed',
-    broadcastAt: anySent ? Date.now() : null,
+    status: ok ? 'enriched' : 'failed',
+    alertedAt: trade.alertedAt ?? (ok ? Date.now() : null),
+    enrichedAt: ok ? Date.now() : null,
     results,
   })
-
   res.json({ trade: updated, results })
 })
 
-app.post('/api/trades/:id/skip', (req, res) => {
-  const trade = updateTrade(req.params.id, { status: 'skipped' })
+app.post('/api/trades/:id/dismiss', (req, res) => {
+  const trade = updateTrade(req.params.id, { status: 'dismissed' })
   if (!trade) return res.status(404).json({ error: 'not found' })
   res.json({ trade })
 })
 
 app.listen(config.port, () => {
-  const on = Object.entries(enabledChannels())
-    .filter(([, v]) => v)
-    .map(([k]) => k)
+  const s = getSettings()
+  const on = Object.entries(enabledChannels(s)).filter(([, v]) => v).map(([k]) => k)
   console.log(`thesis-broadcaster on http://localhost:${config.port}`)
-  console.log(`watching wallet ${config.wallet || '(unset)'}`)
-  console.log(`channels: ${on.length ? on.join(', ') : 'none configured'}`)
+  console.log(`wallet: ${s.wallet || '(unset — open the dashboard to configure)'}`)
+  console.log(`channels: ${on.length ? on.join(', ') : 'none'} · auto-broadcast: ${s.autoBroadcast}`)
 })

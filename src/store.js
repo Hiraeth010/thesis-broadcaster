@@ -20,6 +20,7 @@ function save(db) {
   writeFileSync(dbPath, JSON.stringify(db, null, 2))
 }
 
+// status: queued -> alerted -> enriched, or failed / dismissed
 export function addTrade(swap) {
   const db = load()
   if (db.trades.some((t) => t.signature === swap.signature)) return null
@@ -27,9 +28,10 @@ export function addTrade(swap) {
   const trade = {
     ...swap,
     id: swap.signature.slice(0, 12),
-    status: 'pending',
+    status: 'queued',
     thesis: '',
-    broadcastAt: null,
+    alertedAt: null,
+    enrichedAt: null,
     results: null,
   }
   db.trades.unshift(trade)

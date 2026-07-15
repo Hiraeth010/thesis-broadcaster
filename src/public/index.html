@@ -18,52 +18,47 @@
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--text);
+        margin: 0; background: var(--bg); color: var(--text);
         font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
         padding: 32px 20px 64px;
       }
       .wrap { max-width: 760px; margin: 0 auto; }
-      header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
       h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
-      .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 14px;
-      }
+      h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600;
+           text-transform: uppercase; letter-spacing: 0.06em; }
+      .sub { color: var(--muted); font-size: 13px; margin: 6px 0 24px; }
+      .card { background: var(--panel); border: 1px solid var(--line);
+              border-radius: 12px; padding: 16px; margin-bottom: 14px; }
       .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-      .tag {
-        font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-        padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
-      }
-      .buy { color: var(--buy); }
-      .sell { color: var(--sell); }
+      .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+             padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; }
+      .buy { color: var(--buy); } .sell { color: var(--sell); }
       .title { font-weight: 600; }
       .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
       .meta a { color: var(--muted); }
-      textarea {
-        width: 100%; margin-top: 12px; min-height: 90px; resize: vertical;
-        background: #0e0e14; color: var(--text);
-        border: 1px solid var(--line); border-radius: 8px; padding: 10px;
-        font: inherit;
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+      input, textarea {
+        width: 100%; background: #0e0e14; color: var(--text);
+        border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit;
       }
-      textarea:focus { outline: none; border-color: var(--accent); }
-      .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
-      button {
-        font: inherit; font-weight: 500; cursor: pointer;
-        border-radius: 8px; padding: 8px 14px;
-        border: 1px solid var(--line); background: #1c1c25; color: var(--text);
-      }
+      textarea { min-height: 88px; resize: vertical; margin-top: 12px; }
+      input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+      input:disabled { opacity: 0.5; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+      .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+      button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px;
+               padding: 8px 14px; border: 1px solid var(--line); background: #1c1c25; color: var(--text); }
       button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
       button:disabled { opacity: 0.45; cursor: not-allowed; }
       .status { font-size: 12px; color: var(--muted); margin-left: auto; }
-      .done { border-color: #1f3d2b; }
-      .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+      .empty { color: var(--muted); text-align: center; padding: 40px 0; }
       code { background: #0e0e14; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+      .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+      details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+      .ok { color: var(--buy); } .bad { color: var(--sell); }
+      .switch { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+      .switch input { width: auto; }
     </style>
   </head>
   <body>
@@ -72,32 +67,176 @@
         <h1>thesis broadcaster</h1>
         <span id="channels" class="status"></span>
       </header>
-      <div class="sub">Trades land here from your wallet. Nothing goes out until you approve it.</div>
+      <div class="sub">
+        Runs on your machine. Keys stay in <code>data/config.json</code> — nothing is sent anywhere
+        except the channels you connect.
+      </div>
+
+      <div class="card">
+        <details id="setup">
+          <summary>Setup — wallet &amp; channels</summary>
+          <div id="setup-body"></div>
+        </details>
+      </div>
+
+      <h2>Trades</h2>
       <div id="list"></div>
     </div>
 
     <script type="module">
       const list = document.getElementById('list')
       const channelsEl = document.getElementById('channels')
+      const setupBody = document.getElementById('setup-body')
 
-      // Drafts live here so the poll can never clobber text being typed.
       const drafts = new Map()
       let lastKey = ''
+      let settingsRendered = false
 
       const fmt = (n) =>
-        !Number.isFinite(n) ? '0'
-        : Math.abs(n) < 0.0001 && n !== 0 ? n.toExponential(2)
+        !Number.isFinite(n) || n === 0 ? '0'
+        : Math.abs(n) < 0.0001 ? n.toExponential(2)
         : n.toLocaleString('en-US', { maximumSignificantDigits: 6 })
 
+      async function api(path, opts) {
+        const res = await fetch(path, {
+          headers: { 'content-type': 'application/json' },
+          ...opts,
+        })
+        return { ok: res.ok, json: await res.json().catch(() => ({})) }
+      }
+
+      // ---- setup ----------------------------------------------------------
+
+      // Secret fields are never populated with the real value. A blank box on a
+      // configured secret means "leave it alone", so nothing can round-trip a
+      // display value back over the stored one.
+      function field(id, label, value, { locked, type = 'text', hint, isSet } = {}) {
+        const secret = type === 'password'
+        const placeholder = secret && isSet ? 'configured — leave blank to keep' : ''
+        return `
+          <label for="${id}">${label}${secret && isSet ? ' <span class="ok">✓</span>' : ''}</label>
+          <input id="${id}" type="${type}" value="${secret ? '' : value ?? ''}"
+                 placeholder="${placeholder}" ${locked ? 'disabled' : ''} />
+          ${hint ? `<div class="hint">${hint}</div>` : ''}
+          ${locked ? '<div class="hint">set via .env — edit the file to change</div>' : ''}
+        `
+      }
+
+      async function renderSetup() {
+        const { json } = await api('/api/settings')
+        const { settings: s, locked } = json
+        const set = s.configured ?? {}
+
+        setupBody.innerHTML = `
+          ${field('wallet', 'Your wallet address', s.wallet, {
+            locked: locked.wallet,
+            hint: 'Swaps from this wallet trigger a broadcast.',
+          })}
+          ${field('referralLink', 'Referral link (appended to every post)', s.referralLink)}
+
+          <label>Discord</label>
+          ${field('discord.webhookUrl', 'Webhook URL', s.discord.webhookUrl, {
+            locked: locked.discord, type: 'password', isSet: set['discord.webhookUrl'],
+            hint: 'Server Settings → Integrations → Webhooks → New Webhook',
+          })}
+
+          <label>Telegram</label>
+          <div class="grid">
+            <div>${field('telegram.botToken', 'Bot token', s.telegram.botToken, {
+              locked: locked.telegram, type: 'password', isSet: set['telegram.botToken'],
+              hint: 'From @BotFather',
+            })}</div>
+            <div>${field('telegram.chatId', 'Chat id', s.telegram.chatId, {
+              hint: 'Add the bot to your channel as admin, post once, then Find.',
+            })}</div>
+          </div>
+          <div class="actions">
+            <button id="discover">Find my channels</button>
+            <span class="status" id="discover-status"></span>
+          </div>
+
+          <label>X — bring your own app keys</label>
+          <div class="grid">
+            <div>${field('x.apiKey', 'API key', s.x.apiKey, { locked: locked.x, type: 'password', isSet: set['x.apiKey'] })}</div>
+            <div>${field('x.apiSecret', 'API secret', s.x.apiSecret, { locked: locked.x, type: 'password', isSet: set['x.apiSecret'] })}</div>
+            <div>${field('x.accessToken', 'Access token', s.x.accessToken, { locked: locked.x, type: 'password', isSet: set['x.accessToken'] })}</div>
+            <div>${field('x.accessSecret', 'Access secret', s.x.accessSecret, { locked: locked.x, type: 'password', isSet: set['x.accessSecret'] })}</div>
+          </div>
+          <div class="hint">Create your own app at developer.x.com. Your keys, your quota.</div>
+
+          <div class="switch">
+            <input type="checkbox" id="autoBroadcast" ${s.autoBroadcast ? 'checked' : ''} />
+            <label for="autoBroadcast" style="margin:0">
+              Auto-broadcast the alert as soon as a swap lands (thesis edits it after)
+            </label>
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="save">Save</button>
+            <span class="status" id="save-status"></span>
+          </div>
+        `
+
+        setupBody.querySelector('#save').onclick = async () => {
+          const get = (id) => setupBody.querySelector(`#${CSS.escape(id)}`)
+          const val = (id) => (get(id).disabled ? undefined : get(id).value.trim() || undefined)
+          const status = setupBody.querySelector('#save-status')
+          status.textContent = 'saving…'
+          // Blank secret box = unchanged (server ignores ''), so a saved key is
+          // never clobbered by re-saving the form.
+          const { ok } = await api('/api/settings', {
+            method: 'PUT',
+            body: JSON.stringify({
+              wallet: val('wallet'),
+              referralLink: get('referralLink').value.trim(),
+              autoBroadcast: get('autoBroadcast').checked,
+              discord: { webhookUrl: val('discord.webhookUrl') ?? '' },
+              telegram: { botToken: val('telegram.botToken') ?? '', chatId: val('telegram.chatId') },
+              x: {
+                apiKey: val('x.apiKey') ?? '', apiSecret: val('x.apiSecret') ?? '',
+                accessToken: val('x.accessToken') ?? '', accessSecret: val('x.accessSecret') ?? '',
+              },
+            }),
+          })
+          status.textContent = ok ? 'saved' : 'failed'
+          settingsRendered = false
+          load({ force: true })
+        }
+
+        setupBody.querySelector('#discover').onclick = async () => {
+          const status = setupBody.querySelector('#discover-status')
+          status.textContent = 'looking…'
+          // Blank means "use the token already saved on disk".
+          const token = setupBody.querySelector('#telegram\\.botToken').value.trim()
+          const { json } = await api('/api/settings/telegram/discover', {
+            method: 'POST',
+            body: JSON.stringify(token ? { botToken: token } : {}),
+          })
+          if (!json.ok) {
+            status.textContent = json.reason ?? json.error ?? 'failed'
+            return
+          }
+          if (!json.chats?.length) {
+            status.textContent = 'no chats seen — post in the channel first'
+            return
+          }
+          setupBody.querySelector('#telegram\\.chatId').value = json.chats[0].id
+          status.textContent = `found ${json.chats.map((c) => c.title).join(', ')}`
+        }
+
+        settingsRendered = true
+      }
+
+      // ---- trades ---------------------------------------------------------
+
       async function load({ force = false } = {}) {
-        const res = await fetch('/api/trades')
-        const { trades, channels } = await res.json()
+        const { json } = await api('/api/trades')
+        const { trades, channels } = json
 
         const on = Object.entries(channels).filter(([, v]) => v).map(([k]) => k)
         channelsEl.textContent = on.length ? `channels: ${on.join(', ')}` : 'no channels configured'
+        if (!settingsRendered) await renderSetup()
 
-        // Only touch the DOM when the list actually changed, otherwise the poll
-        // would steal focus from the textarea every few seconds.
         const key = trades.map((t) => `${t.id}:${t.status}`).join('|')
         if (!force && key === lastKey) return
         lastKey = key
@@ -106,101 +245,90 @@
           list.innerHTML = `<div class="empty">No trades yet.<br />Waiting on <code>POST /webhook</code>.</div>`
           return
         }
-
         list.innerHTML = ''
         for (const t of trades) list.append(render(t))
       }
 
+      function resultLine(results) {
+        if (!results) return ''
+        return Object.entries(results)
+          .map(([k, v]) => {
+            const cls = v.ok ? 'ok' : v.skipped ? '' : 'bad'
+            const word = v.ok ? 'sent' : v.skipped ? 'off' : 'failed'
+            return `<span class="${cls}">${k}: ${word}</span>`
+          })
+          .join(' · ')
+      }
+
       function render(t) {
         const el = document.createElement('div')
-        el.className = 'card' + (t.status === 'broadcast' ? ' done' : '')
-
-        const sideClass = t.side === 'BUY' ? 'buy' : 'sell'
+        el.className = 'card'
         const verb = t.side === 'BUY' ? 'Bought' : 'Sold'
-        const when = new Date(t.timestamp).toLocaleString()
 
         el.innerHTML = `
           <div class="row">
-            <span class="tag ${sideClass}">${t.side}</span>
+            <span class="tag ${t.side === 'BUY' ? 'buy' : 'sell'}">${t.side}</span>
             <span class="title">${verb} ${fmt(t.asset.amount)} ${t.asset.symbol}
               for ${fmt(t.quote.amount)} ${t.quote.symbol}</span>
+            <span class="status">${t.status}</span>
           </div>
           <div class="meta">
-            ${fmt(t.price)} ${t.quote.symbol} · ${t.source} · ${when} ·
+            ${fmt(t.price)} ${t.quote.symbol} · ${t.source} ·
+            ${new Date(t.timestamp).toLocaleString()} ·
             <a href="https://solscan.io/tx/${t.signature}" target="_blank" rel="noreferrer">tx</a>
+            ${t.results ? ' · ' + resultLine(t.results) : ''}
           </div>
         `
 
-        if (t.status === 'pending') {
-          const ta = document.createElement('textarea')
-          ta.placeholder = 'Why did you take this trade?'
-          ta.value = drafts.get(t.id) ?? t.thesis ?? ''
-          ta.addEventListener('input', () => drafts.set(t.id, ta.value))
+        if (t.status === 'dismissed') return el
 
-          const actions = document.createElement('div')
-          actions.className = 'actions'
+        const ta = document.createElement('textarea')
+        ta.placeholder = t.status === 'queued'
+          ? 'Why did you take this trade? (sends the post)'
+          : 'Add your thesis — this edits the post that already went out'
+        ta.value = drafts.get(t.id) ?? t.thesis ?? ''
+        ta.addEventListener('input', () => drafts.set(t.id, ta.value))
 
-          const send = document.createElement('button')
-          send.className = 'primary'
-          send.textContent = 'Broadcast'
+        const actions = document.createElement('div')
+        actions.className = 'actions'
 
-          const skip = document.createElement('button')
-          skip.textContent = 'Skip'
+        const send = document.createElement('button')
+        send.className = 'primary'
+        send.textContent = t.status === 'queued' ? 'Broadcast' : 'Update post'
 
-          const status = document.createElement('span')
-          status.className = 'status'
+        const dismiss = document.createElement('button')
+        dismiss.textContent = 'Dismiss'
 
-          send.onclick = async () => {
-            if (!ta.value.trim()) {
-              status.textContent = 'write a thesis first'
-              return
-            }
-            send.disabled = skip.disabled = true
-            status.textContent = 'sending…'
-            await fetch(`/api/trades/${t.id}/thesis`, {
-              method: 'PUT',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ thesis: ta.value }),
-            })
-            const res = await fetch(`/api/trades/${t.id}/broadcast`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({}),
-            })
-            const json = await res.json()
-            if (!res.ok) {
-              status.textContent = json.error ?? 'failed'
-              send.disabled = skip.disabled = false
-              return
-            }
-            const failed = Object.entries(json.results ?? {}).filter(([, v]) => !v.ok && !v.skipped)
-            if (failed.length) {
-              status.textContent = failed.map(([k, v]) => `${k}: ${v.reason}`).join(' · ')
-            }
-            drafts.delete(t.id)
-            load({ force: true })
+        const status = document.createElement('span')
+        status.className = 'status'
+
+        send.onclick = async () => {
+          if (!ta.value.trim()) return void (status.textContent = 'write a thesis first')
+          send.disabled = dismiss.disabled = true
+          status.textContent = 'sending…'
+          const { ok, json } = await api(`/api/trades/${t.id}/thesis`, {
+            method: 'PUT',
+            body: JSON.stringify({ thesis: ta.value }),
+          })
+          if (!ok) {
+            status.textContent = json.error ?? 'failed'
+            send.disabled = dismiss.disabled = false
+            return
           }
-
-          skip.onclick = async () => {
-            await fetch(`/api/trades/${t.id}/skip`, { method: 'POST' })
-            drafts.delete(t.id)
-            load({ force: true })
-          }
-
-          actions.append(send, skip, status)
-          el.append(ta, actions)
-        } else {
-          const note = document.createElement('div')
-          note.className = 'meta'
-          const detail = t.results
-            ? Object.entries(t.results)
-                .map(([k, v]) => `${k}: ${v.ok ? 'sent' : v.skipped ? 'skipped' : 'failed'}`)
-                .join(' · ')
-            : ''
-          note.textContent = `${t.status}${detail ? ' — ' + detail : ''}`
-          el.append(note)
+          const failed = Object.entries(json.results ?? {}).filter(([, v]) => !v.ok && !v.skipped)
+          if (failed.length) status.textContent = failed.map(([k, v]) => `${k}: ${v.reason}`).join(' · ')
+          drafts.delete(t.id)
+          load({ force: true })
         }
 
+        dismiss.onclick = async () => {
+          await api(`/api/trades/${t.id}/dismiss`, { method: 'POST' })
+          drafts.delete(t.id)
+          load({ force: true })
+        }
+
+        actions.append(send, dismiss, status)
+        el.append(ta, actions)
         return el
       }
 
