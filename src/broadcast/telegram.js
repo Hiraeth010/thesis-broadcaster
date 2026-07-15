@@ -1,4 +1,5 @@
 import { getSettings } from '../settings.js'
+import { config } from '../config.js'
 import { contractAddress, headline, solscanUrl } from './format.js'
 
 function escapeHtml(s) {
@@ -22,7 +23,7 @@ function bodyFor(trade, variant, referralLink) {
 }
 
 async function call(botToken, method, payload) {
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+  const res = await fetch(`${config.telegramApiBase}/bot${botToken}/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),

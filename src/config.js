@@ -7,4 +7,6 @@ export const config = {
   webhookAuth: process.env.WEBHOOK_AUTH ?? '',
   heliusApiKey: process.env.HELIUS_API_KEY ?? '',
   webhookUrl: process.env.WEBHOOK_URL ?? '',
+  // Overridable so the Telegram client can be pointed at a mock in tests.
+  telegramApiBase: process.env.TELEGRAM_API_BASE ?? 'https://api.telegram.org',
 }

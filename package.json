@@ -13,7 +13,8 @@
     "webhook:register": "node scripts/register-webhook.mjs register",
     "webhook:list": "node scripts/register-webhook.mjs list",
     "webhook:delete": "node scripts/register-webhook.mjs delete",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test:telegram": "node scripts/test-telegram.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

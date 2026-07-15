@@ -161,6 +161,18 @@ node scripts/sample-webhook.mjs buy
 node scripts/sample-webhook.mjs sell
 ```
 
+### Testing Telegram
+
+```bash
+npm run test:telegram            # mock — no token needed, nothing is sent
+npm run test:telegram -- --live  # real Telegram, POSTS TO YOUR CHANNEL
+```
+
+The mock (`scripts/mocks/telegram.mjs`) validates against the documented Bot API
+contract — payload shape, HTML escaping, error handling — rather than accepting
+anything. It catches most bugs, but only `--live` proves Telegram itself accepts what
+we send.
+
 ---
 
 ## Status
@@ -174,8 +186,13 @@ tested across four RPC failure modes (healthy / rate-limited / not-found / parti
 Plus auto-broadcast toggle, empty-thesis rejection, dedupe, quote-to-quote filtering,
 ATA-rent dust, X's 280-char clamp keeping the CA intact, and secret round-trip safety.
 
-**Not verified:** Telegram and X are implemented but have never run against live
-credentials. Treat as untested until you point real ones at them.
+**Telegram** passes 12 contract tests against a mock that enforces the documented Bot
+API — including that a thesis full of `<script>` tags gets escaped rather than
+rejected. That is not the same as proving live Telegram accepts it: run
+`npm run test:telegram -- --live` with a real token to close that gap.
+
+**Not verified:** X has never run against live credentials. Treat as untested until
+you point a real app at it.
 
 **Not done:** thesis templates, code signing (Windows/macOS will warn on an unsigned
 binary), and the optional browser extension for reading a thesis written in fomo's own
