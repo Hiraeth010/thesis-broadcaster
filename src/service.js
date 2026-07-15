@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { appRoot, dataDir, packaged } from './paths.js'
@@ -11,11 +11,63 @@ import { appRoot, dataDir, packaged } from './paths.js'
 const LABEL = 'thesis-broadcaster'
 const WIN_TASK = 'ThesisBroadcaster'
 
+const pidPath = () => join(dataDir, 'app.pid')
+
+export function writePidFile() {
+  mkdirSync(dataDir, { recursive: true })
+  writeFileSync(pidPath(), String(process.pid))
+}
+
+// Only clear the file if we own it — a restarted instance may have claimed it.
+export function clearPidFile() {
+  try {
+    if (Number(readFileSync(pidPath(), 'utf8').trim()) !== process.pid) return
+  } catch {
+    return
+  }
+  rmSync(pidPath(), { force: true })
+}
+
+export function runningPid() {
+  if (!existsSync(pidPath())) return null
+  const pid = Number(readFileSync(pidPath(), 'utf8').trim())
+  if (!pid || pid === process.pid) return null
+  try {
+    process.kill(pid, 0) // liveness probe, sends no signal
+    return pid
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Stops the background instance. Without this, uninstall removes autostart but
+ * leaves a hidden process running with no window and no off switch — the user
+ * would need Task Manager to stop it.
+ */
+function stopRunning() {
+  const pid = runningPid()
+  if (!pid) return false
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch {
+    return false
+  }
+  // Not clearPidFile(): that only removes the file when we own it, and here we
+  // are killing someone else's pid. On Windows SIGTERM is a hard terminate, so
+  // the victim never runs its own exit handler to clean up.
+  rmSync(pidPath(), { force: true })
+  return true
+}
+
 // Running from source needs `node server.js`; the packaged build is self-contained.
+// --background is an explicit signal: a hidden console is still a TTY, so
+// isTTY alone would make the service think it is interactive and try to open a
+// browser at every logon.
 function launchCommand() {
   return packaged
-    ? { exe: process.execPath, args: [] }
-    : { exe: process.execPath, args: [join(appRoot, 'src', 'server.js')] }
+    ? { exe: process.execPath, args: ['--background'] }
+    : { exe: process.execPath, args: [join(appRoot, 'src', 'server.js'), '--background'] }
 }
 
 const quiet = (cmd, args) => {
@@ -33,12 +85,20 @@ const xmlPath = () => join(dataDir, 'task.xml')
 
 // A Node SEA build is a console app: launching it directly from Task Scheduler
 // flashes a terminal on every logon. WScript.Run with mode 0 starts it hidden.
+//
+// The third argument MUST be True (wait). With False, wscript returns instantly,
+// Task Scheduler marks the task completed-successfully, and RestartOnFailure can
+// never fire — the app would stay dead after a crash. Waiting makes wscript's
+// exit code the task's, so a crash registers as a failure and gets restarted.
 function writeVbs() {
   const { exe, args } = launchCommand()
   const parts = [exe, ...args].map((p) => `""${p}""`).join(' ')
   writeFileSync(
     vbsPath(),
-    `Set sh = CreateObject("WScript.Shell")\r\nsh.CurrentDirectory = "${appRoot}"\r\nsh.Run "${parts}", 0, False\r\n`
+    `Set sh = CreateObject("WScript.Shell")\r\n` +
+      `sh.CurrentDirectory = "${appRoot}"\r\n` +
+      `rc = sh.Run("${parts}", 0, True)\r\n` +
+      `WScript.Quit rc\r\n`
   )
 }
 
@@ -51,7 +111,27 @@ function windowsInstall() {
   const xml = `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Description>Posts your trades to your channels.</Description></RegistrationInfo>
-  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+  <Triggers>
+    <!-- Starts it as soon as the user logs in. -->
+    <LogonTrigger><Enabled>true</Enabled></LogonTrigger>
+    <!-- Self-healing, and it has to be a TimeTrigger.
+         Two things that do NOT work, both verified the hard way:
+           1. RestartOnFailure only retries tasks that fail to LAUNCH. An action
+              exiting nonzero doesn't count (Last Result -1, no restart).
+           2. Repetition on the LogonTrigger only arms when that trigger fires,
+              i.e. at logon — so it never repeats within a session.
+         A TimeTrigger with a past StartBoundary repeats regardless. Every minute
+         it tries to run; MultipleInstancesPolicy=IgnoreNew skips while the app
+         is alive, so a dead app is revived on the next tick. -->
+    <TimeTrigger>
+      <StartBoundary>2020-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
   <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
@@ -219,7 +299,11 @@ export function install() {
 
 export function uninstall() {
   if (!impl) return { ok: false, reason: `autostart not supported on ${process.platform}` }
-  return impl.uninstall()
+  const r = impl.uninstall()
+  if (!r.ok) return r
+  // Removing autostart isn't enough: the instance it already started is still
+  // running, hidden, with no way for the user to stop it.
+  return { ...r, stopped: stopRunning() }
 }
 
 export function status() {

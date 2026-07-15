@@ -204,12 +204,15 @@ API — including that a thesis full of `<script>` tags gets escaped rather than
 rejected. That is not the same as proving live Telegram accepts it: run
 `npm run test:telegram -- --live` with a real token to close that gap.
 
-**Background mode is only verified as far as it can be without installing it.** The
-CLI, the status reporting, the dashboard toggle, headless detection (no browser
-stolen, logs tee'd to `data/app.log`) and the packaged binary's CLI are all confirmed.
-The actual `schtasks` / `launchctl` / `systemctl` registration has **not** been run —
-installing autostart is the user's call, not something to do to their machine
-unprompted. macOS and Linux paths are written but have never executed at all.
+**Background mode is verified on Windows, end to end and for real.** The task
+registers; the app runs hidden; killing the process brings it back on its own in
+~15–20s; the 1-minute repetition does not stack duplicates while it's alive; and
+uninstall removes the task, stops the running app, cleans up its files, and it stays
+stopped. Three mechanisms were tried before one worked — see `src/service.js`.
+
+**macOS and Linux autostart have never executed.** The code is written and follows
+each platform's normal pattern, but it is unproven. Given Windows needed three
+attempts, expect these to need at least one.
 
 **Not verified:** X has never run against live credentials. Treat as untested until
 you point a real app at it.

@@ -14,7 +14,9 @@ import { Poller, checkRpc, resetCursor } from './poller.js'
 
 // ---- cli --------------------------------------------------------------------
 
-const flag = process.argv.find((a) => a.startsWith('--'))
+// --background is a mode, not a command, so it must not be read as one.
+const argv = process.argv.slice(2).filter((a) => a !== '--background')
+const flag = argv.find((a) => a.startsWith('--'))
 
 if (flag === '--help' || flag === '-h') {
   console.log(`
@@ -64,8 +66,11 @@ if (flag === '--status') {
 // ---- logging ----------------------------------------------------------------
 
 // Running in the background there is no console to print to, so tee everything
-// to a file the user (and the dashboard) can read.
-const headless = !process.stdout.isTTY
+// to a file the user (and the dashboard) can read. isTTY is not enough on its
+// own: a window-hidden console still reports as a TTY, so the service passes
+// --background explicitly.
+const serviceLaunched = process.argv.includes('--background')
+const headless = serviceLaunched || !process.stdout.isTTY
 if (headless) {
   const logFile = join(dataDir, 'app.log')
   mkdirSync(dataDir, { recursive: true })
@@ -149,7 +154,20 @@ app.post('/api/background', (req, res) => {
   const on = Boolean(req.body?.enabled)
   const r = on ? service.install() : service.uninstall()
   if (!r.ok) return res.status(500).json({ error: r.reason })
-  res.json({ background: { ...service.status(), supported: service.supported } })
+
+  res.json({
+    background: { ...service.status(), supported: service.supported },
+    // Keyed on --background, not headless: a foreground run with redirected
+    // output is not the service and must not shut itself down.
+    stoppingSelf: !on && serviceLaunched,
+  })
+
+  // If this IS the background instance, uninstall can't kill it from the
+  // inside — so step down once the response is out.
+  if (!on && serviceLaunched) {
+    console.log('[service] background mode turned off — shutting down')
+    setTimeout(() => process.exit(0), 300)
+  }
 })
 
 app.post('/api/status/check-rpc', async (_req, res) => {
@@ -257,3 +275,13 @@ app.listen(config.port, () => {
   if (s.wallet) poller.start()
   openBrowser(url)
 })
+
+// Lets --uninstall find and stop the background instance.
+service.writePidFile()
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => {
+    service.clearPidFile()
+    process.exit(0)
+  })
+}
+process.on('exit', () => service.clearPidFile())
