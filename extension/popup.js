@@ -93,8 +93,15 @@ async function load() {
           <button class="primary">This is my thesis</button>
         </div>`
       el.querySelector('button').onclick = async () => {
-        await send('learn', { pattern: c.pattern, field: f.path })
-        load()
+        const btn = el.querySelector('button')
+        btn.disabled = true
+        btn.textContent = 'sending…'
+        const r = await send('learn', { pattern: c.pattern, field: f.path })
+        // Learning also posts this thesis, so say whether it actually went out.
+        state.innerHTML = r?.broadcast
+          ? `<span class="ok">Connected — and that thesis just went out.</span>`
+          : `<span class="ok">Connected.</span> That one didn't post (no matching trade, or already sent) — the next will.`
+        setTimeout(load, 1800)
       }
       body.append(el)
     }

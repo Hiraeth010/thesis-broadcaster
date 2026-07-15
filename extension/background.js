@@ -30,13 +30,29 @@ async function badge(text, color) {
 }
 
 async function alert(settings, trade) {
-  const results = await sendAll(settings, trade, 'alert')
+  const results = await sendAll(settings, await withToken(trade), 'alert')
   const ok = anyOk(results)
   return updateTrade(trade.id, {
     status: ok ? 'alerted' : 'failed',
     alertedAt: ok ? Date.now() : null,
     results,
   })
+}
+
+/**
+ * Trades stored before token resolution existed (or resolved while an API was
+ * down) kept the shortened mint as their symbol. Heal them before posting,
+ * otherwise an old trade broadcasts as "Cq3Y…kUzG" forever.
+ */
+async function withToken(trade) {
+  if (trade.asset.symbol && !trade.asset.symbol.includes('…')) return trade
+  const token = await resolveToken(trade.asset.mint)
+  if (token.symbol.includes('…')) return trade // still unknown; nothing gained
+  return (
+    (await updateTrade(trade.id, {
+      asset: { ...trade.asset, symbol: token.symbol, name: token.name },
+    })) ?? trade
+  )
 }
 
 async function ingest(settings, swap) {
@@ -83,7 +99,8 @@ async function tradeForThesis(mint) {
 }
 
 async function postThesis(settings, trade, thesis) {
-  const updated = await updateTrade(trade.id, { thesis })
+  const healed = await withToken(trade)
+  const updated = await updateTrade(healed.id, { thesis })
   const results = await sendAll(settings, updated, 'thesis')
   const ok = anyOk(results)
   await updateTrade(trade.id, {
@@ -160,7 +177,26 @@ const handlers = {
 
   learn: async ({ pattern, field }) => {
     await saveSettings({ learn: { pattern, field, learnedAt: Date.now() } })
-    return { learn: (await loadSettings()).learn }
+    const settings = await loadSettings()
+
+    // Broadcast the very thesis that was just pointed at. Matching only fires
+    // on the NEXT request, so without this the thesis used to teach it is
+    // silently dropped and the first one you ever write never goes out.
+    let broadcast = false
+    const picked = (await learn.listCandidates()).find(
+      (c) => c.pattern === pattern && c.fields.some((f) => f.path === field)
+    )
+    if (picked) {
+      const thesis = picked.fields.find((f) => f.path === field)?.value?.trim()
+      const trade = await tradeForThesis(picked.mint)
+      if (thesis && trade && trade.thesis?.trim() !== thesis) {
+        const r = await postThesis(settings, trade, thesis)
+        broadcast = r.ok
+        console.log(`[ext] learned, posting that thesis now -> ${trade.id} -> ${r.ok ? 'sent' : 'failed'}`)
+      }
+    }
+
+    return { learn: settings.learn, broadcast }
   },
 
   forget: async () => {

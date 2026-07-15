@@ -188,5 +188,59 @@ check('X carries the CA', xThesis.includes(PUNCH))
 check('X has NO link — a link costs 13x more', !/https?:\/\//.test(xThesis), xThesis)
 check('X still fits 280', xThesis.length <= 280, String(xThesis.length))
 
+console.log('\nLearning posts the thesis you just pointed at\n')
+{
+  // Reproduces the real report: fomo posts theses to prod-api.fomo.family/trades/comment
+  // with the text in `comment`. Previously the thesis used to TEACH it was
+  // silently dropped, because matching only fires on the NEXT request.
+  await send({ type: 'forget' })
+  const before = discordPosts.length
+
+  rpcSigs = [{ signature: 'sigLearn44444444444444444444444444444444', err: null }]
+  await send({ type: 'pollNow' })
+  check('a fresh trade to attach to', discordPosts.length === before + 1)
+
+  const comment = {
+    type: 'observed',
+    payload: {
+      transport: 'fetch',
+      method: 'POST',
+      url: 'https://prod-api.fomo.family/trades/comment',
+      body: { tradeId: 'abc123', comment: 'Reflexive floor while the story is still being told.' },
+      at: Date.now(),
+    },
+  }
+  const seen = await send(comment)
+  check('nothing broadcasts before it is taught', seen.broadcast === false)
+
+  const cands = (await send({ type: 'getState' })).candidates
+  const c = cands.find((x) => x.pattern === 'prod-api.fomo.family/trades/comment')
+  check('the real fomo endpoint is offered as a candidate', Boolean(c), JSON.stringify(cands.map((x) => x.pattern)))
+  check('with `comment` as the field', c?.fields?.some((f) => f.path === 'comment'))
+
+  const learned = await send({ type: 'learn', pattern: c.pattern, field: 'comment' })
+  check('teaching it ALSO posts that thesis', learned.broadcast === true, JSON.stringify(learned))
+  check('a thesis message actually went out', discordPosts.length === before + 2)
+  check('and it carries the CA', discordPosts.at(-1).fields.some((f) => f.name === 'CA'))
+  check('and the thesis text', discordPosts.at(-1).description?.includes('Reflexive floor'))
+}
+
+console.log('\nOld trades stored with a short mint get healed\n')
+{
+  const trades = await send({ type: 'getState' })
+  const id = trades.trades[0].id
+  // simulate a trade stored before token resolution existed
+  store.set(
+    'trades',
+    store.get('trades').map((t) => (t.id === id ? { ...t, asset: { ...t.asset, symbol: '2qEH…pump', name: '2qEH…pump' }, thesis: '' } : t))
+  )
+  const before = discordPosts.length
+  const r = await send({ type: 'postThesis', id, thesis: 'healing check, long enough to be prose' })
+  check('posted', r.ok === true, JSON.stringify(r))
+  check('the short mint was re-resolved before posting', discordPosts.at(-1).title.includes('Pnut'), discordPosts.at(-1).title)
+  check('not left as the raw mint', !discordPosts.at(-1).title.includes('…pump'), discordPosts.at(-1).title)
+  check('one message sent', discordPosts.length === before + 1)
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`)
 process.exit(fail ? 1 : 0)
