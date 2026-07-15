@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "thesis broadcaster",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Broadcast your Solana trades to your own Discord, Telegram and X. Write the thesis on fomo, it posts itself.",
   "icons": {
     "16": "icons/16.png",
@@ -9,7 +9,10 @@
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "permissions": ["storage", "alarms"],
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
   "host_permissions": [
     "https://fomo.family/*",
     "https://solana-rpc.publicnode.com/*",
@@ -18,18 +21,31 @@
     "https://api.telegram.org/*",
     "https://api.twitter.com/*"
   ],
-  "optional_host_permissions": ["https://*/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
-      "matches": ["https://fomo.family/*"],
-      "js": ["hook.js"],
+      "matches": [
+        "https://fomo.family/*"
+      ],
+      "js": [
+        "hook.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://fomo.family/*"],
-      "js": ["relay.js"],
+      "matches": [
+        "https://fomo.family/*"
+      ],
+      "js": [
+        "relay.js"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED"
     }
@@ -44,5 +60,8 @@
       "128": "icons/128.png"
     }
   },
-  "options_ui": { "page": "options.html", "open_in_tab": true }
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
 }
