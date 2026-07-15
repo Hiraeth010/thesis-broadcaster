@@ -1,4 +1,5 @@
 import express from 'express'
+import { exec } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from './config.js'
@@ -7,6 +8,7 @@ import { parseWebhookBody } from './parse.js'
 import { addTrade, getTrade, listTrades, updateTrade } from './store.js'
 import { sendAll, editAll } from './broadcast/index.js'
 import { discoverChatId } from './broadcast/telegram.js'
+import { Poller, checkRpc, resetCursor } from './poller.js'
 
 const app = express()
 app.use(express.json({ limit: '5mb' }))
@@ -26,25 +28,43 @@ async function alert(trade) {
   })
 }
 
+async function ingest(swap) {
+  const trade = addTrade(swap)
+  if (!trade) return null
+  console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id}`)
+  if (!getSettings().autoBroadcast) return trade
+  const updated = await alert(trade)
+  console.log(`[alert] ${trade.id} -> ${updated.status}`)
+  return updated
+}
+
+const poller = new Poller(ingest)
+
 app.post('/webhook', async (req, res) => {
   if (config.webhookAuth && req.get('authorization') !== config.webhookAuth) {
     return res.status(401).json({ error: 'bad auth header' })
   }
 
-  const { wallet, autoBroadcast } = getSettings()
+  const { wallet } = getSettings()
   if (!wallet) return res.status(400).json({ error: 'wallet not configured' })
 
   const swaps = parseWebhookBody(req.body, wallet)
-  const added = swaps.map(addTrade).filter(Boolean)
 
   // Respond before broadcasting so a slow channel can't make Helius retry.
-  res.json({ received: swaps.length, queued: added.length })
+  res.json({ received: swaps.length })
 
-  for (const trade of added) {
-    console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id}`)
-    if (!autoBroadcast) continue
-    const updated = await alert(trade)
-    console.log(`[alert] ${trade.id} -> ${updated.status}`)
+  for (const swap of swaps) await ingest(swap)
+})
+
+app.get('/api/status', async (_req, res) => {
+  res.json({ poller: poller.status(), channels: enabledChannels() })
+})
+
+app.post('/api/status/check-rpc', async (_req, res) => {
+  try {
+    res.json(await checkRpc())
+  } catch (err) {
+    res.json({ ok: false, reason: err.message })
   }
 })
 
@@ -57,7 +77,14 @@ app.get('/api/settings', (_req, res) => {
 })
 
 app.put('/api/settings', (req, res) => {
+  const before = getSettings().wallet
   saveSettings(req.body ?? {})
+  const after = getSettings().wallet
+
+  // A new wallet re-baselines, so switching wallets never backfills history.
+  if (after && after !== before) resetCursor(before)
+  poller.start()
+
   res.json({ settings: maskedSettings(), channels: enabledChannels() })
 })
 
@@ -102,10 +129,28 @@ app.post('/api/trades/:id/dismiss', (req, res) => {
   res.json({ trade })
 })
 
+function openBrowser(url) {
+  if (process.env.NO_OPEN) return
+  const cmd =
+    process.platform === 'win32' ? `start "" "${url}"`
+    : process.platform === 'darwin' ? `open "${url}"`
+    : `xdg-open "${url}"`
+  exec(cmd, () => {})
+}
+
 app.listen(config.port, () => {
   const s = getSettings()
+  const url = `http://localhost:${config.port}`
   const on = Object.entries(enabledChannels(s)).filter(([, v]) => v).map(([k]) => k)
-  console.log(`thesis-broadcaster on http://localhost:${config.port}`)
-  console.log(`wallet: ${s.wallet || '(unset — open the dashboard to configure)'}`)
-  console.log(`channels: ${on.length ? on.join(', ') : 'none'} · auto-broadcast: ${s.autoBroadcast}`)
+
+  // ASCII only: Windows cmd renders UTF-8 arrows/dashes as mojibake, and a
+  // garbled first impression reads as broken.
+  console.log(`\n  thesis broadcaster is running\n`)
+  console.log(`  ->  ${url}\n`)
+  console.log(`  wallet:   ${s.wallet || 'not set yet - set it in the browser'}`)
+  console.log(`  channels: ${on.length ? on.join(', ') : 'none yet'}`)
+  console.log(`  keep this window open. close it to stop.\n`)
+
+  if (s.wallet) poller.start()
+  openBrowser(url)
 })

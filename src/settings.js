@@ -12,6 +12,7 @@ const path = join(dataDir, 'config.json')
 const SECRET_FIELDS = new Set([
   'discord.webhookUrl',
   'telegram.botToken',
+  'heliusApiKey',
   'x.apiKey',
   'x.apiSecret',
   'x.accessToken',
@@ -22,6 +23,9 @@ const DEFAULTS = {
   wallet: '',
   referralLink: '',
   autoBroadcast: true,
+  rpcUrl: '',
+  heliusApiKey: '',
+  pollSeconds: 15,
   discord: { webhookUrl: '' },
   telegram: { botToken: '', chatId: '' },
   x: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
@@ -31,6 +35,9 @@ function fromEnv() {
   return {
     wallet: process.env.WALLET_ADDRESS || '',
     referralLink: process.env.REFERRAL_LINK || '',
+    rpcUrl: process.env.RPC_URL || '',
+    heliusApiKey: process.env.HELIUS_API_KEY || '',
+    pollSeconds: Number(process.env.POLL_SECONDS) || '',
     discord: { webhookUrl: process.env.DISCORD_WEBHOOK_URL || '' },
     telegram: {
       botToken: process.env.TELEGRAM_BOT_TOKEN || '',
@@ -79,6 +86,15 @@ function get(obj, dotted) {
   return dotted.split('.').reduce((o, k) => o?.[k], obj)
 }
 
+// Secret fields may be top-level ("heliusApiKey") or nested ("x.apiKey"), so
+// these walk the path rather than assuming a group/key pair.
+function set(obj, dotted, value) {
+  const keys = dotted.split('.')
+  const last = keys.pop()
+  const target = keys.reduce((o, k) => (o[k] ??= {}), obj)
+  target[last] = value
+}
+
 function unset(obj, dotted) {
   const keys = dotted.split('.')
   const last = keys.pop()
@@ -124,8 +140,7 @@ export function maskedSettings() {
   const configured = {}
   for (const dotted of SECRET_FIELDS) {
     configured[dotted] = Boolean(get(s, dotted))
-    const [group, key] = dotted.split('.')
-    out[group][key] = ''
+    set(out, dotted, '')
   }
   out.configured = configured
   return out
@@ -143,6 +158,8 @@ export function envLocked() {
   const env = fromEnv()
   return {
     wallet: Boolean(env.wallet),
+    rpcUrl: Boolean(env.rpcUrl),
+    heliusApiKey: Boolean(env.heliusApiKey),
     discord: Boolean(env.discord.webhookUrl),
     telegram: Boolean(env.telegram.botToken),
     x: Boolean(env.x.apiKey),

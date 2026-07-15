@@ -11,100 +11,128 @@ const QUOTE_MINTS = {
 const NATIVE_SOL = 'So11111111111111111111111111111111111111112'
 
 // Native SOL moves that are just rent/fees rather than swap value. Ignoring
-// dust keeps ATA rent (~0.002 SOL) from being mistaken for the quote leg.
+// dust keeps ATA rent (~0.002 SOL) and tx fees from being read as the quote leg.
 const DUST_SOL = 0.001
 
-function netTokenDeltas(tx, wallet) {
+function addDelta(deltas, mint, amount) {
+  if (!mint || !amount) return
+  deltas.set(mint, (deltas.get(mint) ?? 0) + amount)
+}
+
+function applyNativeSol(deltas, lamports) {
+  const sol = lamports / LAMPORTS_PER_SOL
+  if (Math.abs(sol) > DUST_SOL) addDelta(deltas, NATIVE_SOL, sol)
+}
+
+/** Net balance change per mint, from a Helius enhanced transaction. */
+export function deltasFromEnhanced(tx, wallet) {
   const deltas = new Map()
 
   for (const t of tx.tokenTransfers ?? []) {
     const amount = Number(t.tokenAmount ?? 0)
-    if (!amount || !t.mint) continue
-    if (t.fromUserAccount === wallet) {
-      deltas.set(t.mint, (deltas.get(t.mint) ?? 0) - amount)
-    }
-    if (t.toUserAccount === wallet) {
-      deltas.set(t.mint, (deltas.get(t.mint) ?? 0) + amount)
-    }
+    if (t.fromUserAccount === wallet) addDelta(deltas, t.mint, -amount)
+    if (t.toUserAccount === wallet) addDelta(deltas, t.mint, amount)
   }
 
-  let nativeLamports = 0
+  let lamports = 0
   for (const n of tx.nativeTransfers ?? []) {
     const amount = Number(n.amount ?? 0)
-    if (!amount) continue
-    if (n.fromUserAccount === wallet) nativeLamports -= amount
-    if (n.toUserAccount === wallet) nativeLamports += amount
+    if (n.fromUserAccount === wallet) lamports -= amount
+    if (n.toUserAccount === wallet) lamports += amount
   }
-
-  const nativeSol = nativeLamports / LAMPORTS_PER_SOL
-  if (Math.abs(nativeSol) > DUST_SOL) {
-    deltas.set(NATIVE_SOL, (deltas.get(NATIVE_SOL) ?? 0) + nativeSol)
-  }
+  applyNativeSol(deltas, lamports)
 
   return deltas
 }
 
 /**
- * Derive a swap from net wallet balance deltas rather than from the router that
- * produced it. Works for Jupiter, Relay, or anything else that moves value in
- * one transaction.
- *
- * Returns null when the transaction is not a two-sided swap for this wallet.
+ * Net balance change per mint, from a raw `getTransaction` (jsonParsed) result.
+ * Uses pre/post balances, so it works against any Solana RPC — no indexer and
+ * no API key required.
  */
-export function parseSwap(tx, wallet) {
-  const deltas = netTokenDeltas(tx, wallet)
+export function deltasFromRpc(tx, wallet) {
+  const deltas = new Map()
+  const meta = tx?.meta
+  if (!meta || meta.err) return deltas
 
+  const sum = (rows) => {
+    const out = new Map()
+    for (const b of rows ?? []) {
+      if (b.owner !== wallet) continue
+      const amt = Number(b.uiTokenAmount?.uiAmount ?? 0)
+      out.set(b.mint, (out.get(b.mint) ?? 0) + amt)
+    }
+    return out
+  }
+
+  const pre = sum(meta.preTokenBalances)
+  const post = sum(meta.postTokenBalances)
+  for (const mint of new Set([...pre.keys(), ...post.keys()])) {
+    addDelta(deltas, mint, (post.get(mint) ?? 0) - (pre.get(mint) ?? 0))
+  }
+
+  const keys = tx.transaction?.message?.accountKeys ?? []
+  const idx = keys.findIndex((k) => (typeof k === 'string' ? k : k.pubkey) === wallet)
+  if (idx >= 0 && meta.preBalances && meta.postBalances) {
+    applyNativeSol(deltas, meta.postBalances[idx] - meta.preBalances[idx])
+  }
+
+  return deltas
+}
+
+function classify(deltas, { signature, timestamp, source }) {
   const outgoing = []
   const incoming = []
   for (const [mint, amount] of deltas) {
     if (amount < 0) outgoing.push({ mint, amount: Math.abs(amount) })
     if (amount > 0) incoming.push({ mint, amount })
   }
-
   if (!outgoing.length || !incoming.length) return null
 
-  const pickLargest = (arr) => arr.reduce((a, b) => (b.amount > a.amount ? b : a))
-  const sold = pickLargest(outgoing)
-  const bought = pickLargest(incoming)
+  const largest = (arr) => arr.reduce((a, b) => (b.amount > a.amount ? b : a))
+  const sold = largest(outgoing)
+  const bought = largest(incoming)
 
   const soldIsQuote = Boolean(QUOTE_MINTS[sold.mint])
   const boughtIsQuote = Boolean(QUOTE_MINTS[bought.mint])
 
-  // Quote-to-quote (e.g. SOL->USDC) has no asset leg worth a thesis.
-  if (soldIsQuote && boughtIsQuote) return null
-  if (!soldIsQuote && !boughtIsQuote) return null
+  // Quote-to-quote (SOL->USDC) has no asset leg worth a thesis; token-to-token
+  // has no price we can express.
+  if (soldIsQuote === boughtIsQuote) return null
 
   const side = soldIsQuote ? 'BUY' : 'SELL'
   const asset = soldIsQuote ? bought : sold
   const quote = soldIsQuote ? sold : bought
-  const quoteMeta = QUOTE_MINTS[quote.mint]
-
-  const price = asset.amount > 0 ? quote.amount / asset.amount : 0
 
   return {
-    signature: tx.signature,
-    timestamp: (tx.timestamp ?? Math.floor(Date.now() / 1000)) * 1000,
+    signature,
+    timestamp,
     side,
-    source: tx.source ?? 'UNKNOWN',
-    asset: {
-      mint: asset.mint,
-      amount: asset.amount,
-      symbol: symbolFor(tx, asset.mint),
-    },
-    quote: {
-      mint: quote.mint,
-      amount: quote.amount,
-      symbol: quoteMeta.symbol,
-    },
-    price,
+    source: source ?? 'UNKNOWN',
+    asset: { mint: asset.mint, amount: asset.amount, symbol: shortMint(asset.mint) },
+    quote: { mint: quote.mint, amount: quote.amount, symbol: QUOTE_MINTS[quote.mint].symbol },
+    price: asset.amount > 0 ? quote.amount / asset.amount : 0,
   }
 }
 
-// Helius enhanced payloads don't reliably carry a symbol, so fall back to a
-// truncated mint until the dashboard resolves it.
-function symbolFor(tx, mint) {
-  const fromEvents = tx.events?.swap?.tokenInputs?.find((t) => t.mint === mint)?.symbol
-  return fromEvents || `${mint.slice(0, 4)}…${mint.slice(-4)}`
+function shortMint(mint) {
+  return `${mint.slice(0, 4)}…${mint.slice(-4)}`
+}
+
+export function parseSwap(tx, wallet) {
+  return classify(deltasFromEnhanced(tx, wallet), {
+    signature: tx.signature,
+    timestamp: (tx.timestamp ?? Math.floor(Date.now() / 1000)) * 1000,
+    source: tx.source,
+  })
+}
+
+export function parseRpcSwap(tx, wallet, signature) {
+  return classify(deltasFromRpc(tx, wallet), {
+    signature: signature ?? tx.transaction?.signatures?.[0],
+    timestamp: (tx.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,
+    source: 'ON-CHAIN',
+  })
 }
 
 export function parseWebhookBody(body, wallet) {

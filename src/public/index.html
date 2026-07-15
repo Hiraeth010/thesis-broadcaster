@@ -72,6 +72,8 @@
         except the channels you connect.
       </div>
 
+      <div class="card" id="statusCard"></div>
+
       <div class="card">
         <details id="setup">
           <summary>Setup — wallet &amp; channels</summary>
@@ -87,6 +89,7 @@
       const list = document.getElementById('list')
       const channelsEl = document.getElementById('channels')
       const setupBody = document.getElementById('setup-body')
+      const statusCard = document.getElementById('statusCard')
 
       const drafts = new Map()
       let lastKey = ''
@@ -133,6 +136,18 @@
             hint: 'Swaps from this wallet trigger a broadcast.',
           })}
           ${field('referralLink', 'Referral link (appended to every post)', s.referralLink)}
+
+          <details style="margin-top:14px">
+            <summary>Connection (optional — works without this)</summary>
+            ${field('heliusApiKey', 'Helius API key', s.heliusApiKey, {
+              locked: locked.heliusApiKey, type: 'password', isSet: set['heliusApiKey'],
+              hint: 'Free key from helius.dev. Without one it uses a public RPC, which is slower and rate-limited.',
+            })}
+            ${field('rpcUrl', 'Custom RPC URL', s.rpcUrl, {
+              locked: locked.rpcUrl, hint: 'Overrides the Helius key if set.',
+            })}
+            ${field('pollSeconds', 'Check every (seconds)', s.pollSeconds)}
+          </details>
 
           <label>Discord</label>
           ${field('discord.webhookUrl', 'Webhook URL', s.discord.webhookUrl, {
@@ -190,6 +205,9 @@
               wallet: val('wallet'),
               referralLink: get('referralLink').value.trim(),
               autoBroadcast: get('autoBroadcast').checked,
+              heliusApiKey: val('heliusApiKey') ?? '',
+              rpcUrl: get('rpcUrl').disabled ? undefined : get('rpcUrl').value.trim(),
+              pollSeconds: Number(get('pollSeconds').value) || 15,
               discord: { webhookUrl: val('discord.webhookUrl') ?? '' },
               telegram: { botToken: val('telegram.botToken') ?? '', chatId: val('telegram.chatId') },
               x: {
@@ -227,6 +245,52 @@
         settingsRendered = true
       }
 
+      // ---- status ---------------------------------------------------------
+
+      function ago(ts) {
+        if (!ts) return 'never'
+        const s = Math.round((Date.now() - ts) / 1000)
+        return s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`
+      }
+
+      async function renderStatus() {
+        const { json } = await api('/api/status')
+        const p = json.poller
+
+        if (!p.watching) {
+          statusCard.innerHTML = `
+            <div class="row"><span class="tag sell">NOT WATCHING</span>
+              <span class="title">Add your wallet address below to start</span></div>
+            <div class="meta">Nothing will broadcast until a wallet is set.</div>`
+          return
+        }
+
+        const bad = Boolean(p.lastError)
+        statusCard.innerHTML = `
+          <div class="row">
+            <span class="tag ${bad ? 'sell' : 'buy'}">${bad ? 'ERROR' : 'WATCHING'}</span>
+            <span class="title">${p.watching.slice(0, 6)}…${p.watching.slice(-4)}</span>
+            <span class="status">checked ${ago(p.lastPollAt)}</span>
+          </div>
+          <div class="meta">
+            ${bad ? `<span class="bad">${p.lastError}</span>` : `rpc ${p.rpc}`}
+            ${p.baseline ? ' · watching for new trades from now' : ' · setting baseline…'}
+          </div>
+          <div class="actions">
+            <button id="testRpc">Test connection</button>
+            <span class="status" id="rpcStatus"></span>
+          </div>`
+
+        statusCard.querySelector('#testRpc').onclick = async () => {
+          const el = statusCard.querySelector('#rpcStatus')
+          el.textContent = 'checking…'
+          const { json } = await api('/api/status/check-rpc', { method: 'POST' })
+          el.innerHTML = json.ok
+            ? `<span class="ok">connected — slot ${json.slot} in ${json.ms}ms</span>`
+            : `<span class="bad">${json.reason}</span>`
+        }
+      }
+
       // ---- trades ---------------------------------------------------------
 
       async function load({ force = false } = {}) {
@@ -236,6 +300,7 @@
         const on = Object.entries(channels).filter(([, v]) => v).map(([k]) => k)
         channelsEl.textContent = on.length ? `channels: ${on.join(', ')}` : 'no channels configured'
         if (!settingsRendered) await renderSetup()
+        await renderStatus()
 
         const key = trades.map((t) => `${t.id}:${t.status}`).join('|')
         if (!force && key === lastKey) return
