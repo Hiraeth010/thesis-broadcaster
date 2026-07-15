@@ -12,7 +12,7 @@
   "permissions": ["storage", "alarms"],
   "host_permissions": [
     "https://fomo.family/*",
-    "https://api.mainnet-beta.solana.com/*",
+    "https://solana-rpc.publicnode.com/*",
     "https://mainnet.helius-rpc.com/*",
     "https://discord.com/*",
     "https://api.telegram.org/*",

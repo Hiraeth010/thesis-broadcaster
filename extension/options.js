@@ -124,6 +124,23 @@ function renderSetup(s) {
   setupBody.querySelector('#save').onclick = async () => {
     const status = setupBody.querySelector('#save-status')
     status.textContent = 'saving…'
+
+    // A custom RPC host isn't in host_permissions, so the service worker's fetch
+    // would be CORS-blocked. Ask for it here, while we still have the click.
+    const custom = get('rpcUrl').value.trim()
+    if (custom) {
+      try {
+        const origin = new URL(custom).origin + '/*'
+        const granted = await chrome.permissions.request({ origins: [origin] })
+        if (!granted) {
+          status.innerHTML = `<span class="bad">need permission for ${esc(origin)} to use that RPC</span>`
+          return
+        }
+      } catch {
+        status.innerHTML = `<span class="bad">that RPC URL doesn't look valid</span>`
+        return
+      }
+    }
     // Blank secret box = unchanged (background ignores ''), so a saved key is
     // never clobbered by re-saving the form.
     await send('saveSettings', {

@@ -1,7 +1,11 @@
 import { parseRpcSwap } from './parse.js'
 import { getCursor, setCursor, setStatus } from './store.js'
 
-const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com'
+// NOT api.mainnet-beta.solana.com: it returns 403 "Access forbidden" to any
+// browser origin, which is every request an extension makes. publicnode answers
+// cross-origin and doesn't rate-limit a burst of getTransaction calls the way
+// the official endpoint does.
+const PUBLIC_RPC = 'https://solana-rpc.publicnode.com'
 
 // A long gap (browser closed overnight) shouldn't fan out a hundred posts.
 const MAX_PER_POLL = 15
@@ -50,6 +54,16 @@ async function rpc(settings, method, params, { tries = 4 } = {}) {
       await sleep(wait)
       wait *= 2
       continue
+    }
+
+    // 403 here almost always means the endpoint refuses browser origins rather
+    // than anything being wrong with the wallet — say so, since the raw message
+    // ("Access forbidden") sends people looking in the wrong place.
+    if (res.status === 403 || /"code":\s*403/.test(body)) {
+      throw fail(
+        `this RPC refuses browser extensions (403). Leave the custom RPC blank to use the default, or add a free Helius key in Setup.`,
+        false
+      )
     }
     if (!res.ok) throw fail(`rpc ${res.status}: ${body.slice(0, 120)}`, res.status >= 500)
 

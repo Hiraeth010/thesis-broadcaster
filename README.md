@@ -94,9 +94,14 @@ caught up next time you open it.
 **Will it post my old trades?** No. The first time it sees your wallet it marks the
 spot and only watches from then on.
 
-**Do I need an API key?** No, but it helps. Without one it uses a public Solana node
-that gets rate-limited, and you may miss trades. A free key from
-[helius.dev](https://helius.dev) takes a minute — Setup → Connection.
+**Do I need an API key?** No. It defaults to a public Solana node that works fine. A
+free key from [helius.dev](https://helius.dev) makes it faster and more reliable if you
+trade a lot — Setup → Connection.
+
+**I set a custom RPC and get `403 Access forbidden`.** That endpoint refuses browser
+extensions. `api.mainnet-beta.solana.com` is the usual culprit — it 403s every browser
+origin, so it can never work here. Clear the custom RPC field to fall back to the
+default, or use a Helius key.
 
 **Where are my keys?** `chrome.storage.local`, in this browser, on this machine. Not
 synced. The dashboard never shows a saved key back to you — it just says "configured".

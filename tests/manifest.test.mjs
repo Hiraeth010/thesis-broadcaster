@@ -51,6 +51,23 @@ check('an ISOLATED-world script exists (to reach chrome.runtime)', worlds.includ
 for (const host of ['https://api.telegram.org/*', 'https://discord.com/*', 'https://api.twitter.com/*']) {
   check(`host permission present: ${host}`, m.host_permissions.includes(host))
 }
+
+// The default RPC must be permitted or every poll is CORS-blocked, and it must
+// not be api.mainnet-beta.solana.com, which 403s every browser origin.
+const pollerSrc = readFileSync(resolve(root, 'lib/poller.js'), 'utf8')
+const defaultRpc = /const PUBLIC_RPC = '([^']+)'/.exec(pollerSrc)?.[1]
+check('a default RPC is defined', Boolean(defaultRpc), String(defaultRpc))
+check(
+  'the default RPC is permitted in the manifest',
+  m.host_permissions.includes(new URL(defaultRpc).origin + '/*'),
+  defaultRpc
+)
+check(
+  'the default RPC is not the browser-hostile official endpoint',
+  !/api\.mainnet-beta\.solana\.com/.test(defaultRpc),
+  defaultRpc
+)
+check('custom RPCs can be granted at runtime', (m.optional_host_permissions ?? []).length > 0)
 check('alarms permission (polling depends on it)', m.permissions.includes('alarms'))
 check('storage permission (all state depends on it)', m.permissions.includes('storage'))
 
