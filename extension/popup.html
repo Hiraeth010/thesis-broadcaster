@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; width: 380px; max-height: 520px; overflow-y: auto;
+        background: #0b0b0f; color: #e7e7ea;
+        font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 14px;
+      }
+      h1 { font-size: 14px; margin: 0 0 2px; }
+      .sub { color: #8b8b96; font-size: 11px; margin-bottom: 12px; }
+      .card { background: #14141b; border: 1px solid #26262f; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+      .ok { color: #22c55e; } .bad { color: #ef4444; } .muted { color: #8b8b96; }
+      button { font: inherit; cursor: pointer; border-radius: 6px; padding: 5px 10px;
+               border: 1px solid #26262f; background: #1c1c25; color: #e7e7ea; }
+      button.primary { background: #6366f1; border-color: #6366f1; color: #fff; }
+      .quote { color: #c9c9d1; font-style: italic; margin: 6px 0; word-break: break-word; }
+      .path { font-family: ui-monospace, monospace; font-size: 11px; color: #8b8b96; }
+      .row { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+      .empty { color: #8b8b96; text-align: center; padding: 18px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>thesis broadcaster</h1>
+    <div class="sub" id="state">checking…</div>
+    <div id="body"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

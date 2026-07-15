@@ -11,6 +11,7 @@ import { addTrade, getTrade, listTrades, updateTrade } from './store.js'
 import { sendAll } from './broadcast/index.js'
 import { discoverChatId } from './broadcast/telegram.js'
 import { Poller, checkRpc, resetCursor } from './poller.js'
+import * as ext from './extension.js'
 
 // ---- cli --------------------------------------------------------------------
 
@@ -176,6 +177,73 @@ app.post('/api/status/check-rpc', async (_req, res) => {
   } catch (err) {
     res.json({ ok: false, reason: err.message })
   }
+})
+
+// ---- browser extension ------------------------------------------------------
+
+// The extension is the only caller; it lives on a chrome-extension:// origin.
+app.use('/api/extension', (req, res, next) => {
+  res.set('access-control-allow-origin', '*')
+  res.set('access-control-allow-headers', 'content-type')
+  if (req.method === 'OPTIONS') return res.sendStatus(204)
+  next()
+})
+
+/**
+ * Matches a thesis captured from fomo to the trade it belongs to: same mint if
+ * the payload carried one, otherwise the most recent trade still without a
+ * thesis. Returns null rather than guessing at an unrelated trade.
+ */
+function tradeForThesis(mint) {
+  const trades = listTrades().filter((t) => t.status !== 'dismissed')
+  if (mint) {
+    const byMint = trades.find((t) => t.asset.mint === mint)
+    if (byMint) return byMint
+  }
+  return trades.find((t) => !t.thesis?.trim()) ?? null
+}
+
+app.post('/api/extension/observe', async (req, res) => {
+  const payload = req.body ?? {}
+  ext.record(payload)
+
+  const hit = ext.match(payload)
+  if (!hit) return res.json({ observed: true, broadcast: false })
+
+  const trade = tradeForThesis(hit.mint)
+  if (!trade) {
+    console.log('[ext] thesis seen but no trade to attach it to')
+    return res.json({ observed: true, broadcast: false, reason: 'no matching trade' })
+  }
+  if (trade.thesis?.trim() === hit.thesis) {
+    return res.json({ observed: true, broadcast: false, reason: 'already posted' })
+  }
+
+  const updated = updateTrade(trade.id, { thesis: hit.thesis })
+  const results = await sendAll(updated, 'thesis')
+  const ok = anyOk(results)
+  updateTrade(trade.id, {
+    status: ok ? 'enriched' : 'failed',
+    enrichedAt: ok ? Date.now() : null,
+    thesisResults: results,
+    thesisPosts: (trade.thesisPosts ?? 0) + (ok ? 1 : 0),
+  })
+  console.log(`[ext] thesis from fomo -> ${trade.id} -> ${ok ? 'broadcast' : 'failed'}`)
+  res.json({ observed: true, broadcast: ok })
+})
+
+app.get('/api/extension/candidates', (_req, res) => {
+  res.json({ candidates: ext.listCandidates(), learned: getSettings().extension })
+})
+
+app.post('/api/extension/learn', (req, res) => {
+  const { pattern, field } = req.body ?? {}
+  if (!pattern || !field) return res.status(400).json({ error: 'pattern and field required' })
+  res.json({ learned: ext.learn({ pattern, field }) })
+})
+
+app.post('/api/extension/forget', (_req, res) => {
+  res.json({ learned: ext.forget() })
 })
 
 app.get('/api/trades', (_req, res) => {

@@ -27,6 +27,8 @@ const DEFAULTS = {
   rpcUrl: '',
   heliusApiKey: '',
   pollSeconds: 15,
+  // Learned from your own browser traffic, not hardcoded — see src/extension.js
+  extension: { pattern: '', field: '', learnedAt: 0 },
   discord: { webhookUrl: '' },
   telegram: { botToken: '', chatId: '' },
   x: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },

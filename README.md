@@ -68,6 +68,11 @@ you make a trade  (on fomo, or anywhere else on Solana)
   a second post goes out with your reasoning + the CA
 ```
 
+By default you write that thesis in the dashboard at `localhost:3031`. If you'd rather
+write it in fomo itself and have it broadcast from there, there's an optional
+[browser extension](extension/) — **read its warning first**, it's against fomo's terms
+and the risk lands on your account.
+
 **The contract address only ever appears on the thesis post.** The alert just says a
 trade happened; the thesis is the one that invites people to act on it.
 
