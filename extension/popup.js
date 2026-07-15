@@ -37,10 +37,14 @@ async function load() {
     return
   }
 
-  state.innerHTML = `Not connected to fomo yet. Post a thesis on fomo, then pick it below.`
-
   const candidates = s.candidates ?? []
   const seen = s.seen ?? { total: 0, json: 0, byTransport: {}, recent: [] }
+
+  // Always show the tally, not only when there's nothing to pick — "4 candidates
+  // out of 35 requests" is the number that says whether the hook is healthy.
+  state.innerHTML =
+    `Not connected yet. Post a thesis on fomo, then pick it below.` +
+    `<br /><span class="muted">seen ${seen.total} requests from fomo · ${seen.json} with a JSON body</span>`
 
   if (!candidates.length) {
     // "Nothing yet" is useless on its own — it looks the same whether the hook

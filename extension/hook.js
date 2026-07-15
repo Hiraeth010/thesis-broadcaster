@@ -53,10 +53,30 @@
   const origFetch = window.fetch
   window.fetch = function (input, init) {
     try {
+      const isRequest = typeof Request !== 'undefined' && input instanceof Request
       const url = typeof input === 'string' ? input : input?.url
-      const method = init?.method ?? (typeof input === 'object' ? input?.method : 'GET') ?? 'GET'
-      if (/^(POST|PUT|PATCH)$/i.test(method) && typeof init?.body === 'string') {
-        report('fetch', method, url, init.body)
+      const method = init?.method ?? (isRequest ? input.method : 'GET') ?? 'GET'
+
+      if (/^(POST|PUT|PATCH)$/i.test(method)) {
+        const body = init?.body
+
+        if (typeof body === 'string') {
+          report('fetch', method, url, body)
+        } else if (body instanceof URLSearchParams) {
+          report('fetch', method, url, String(body))
+        } else if (isRequest && !body) {
+          // fetch(new Request(url, {method, body})) puts the body INSIDE the
+          // Request, leaving init undefined — the shape typed API clients use.
+          // Reading it needs a clone (the original must stay unconsumed) and is
+          // async, so this reports slightly late rather than not at all.
+          input
+            .clone()
+            .text()
+            .then((text) => {
+              if (text) report('fetch', method, url, text)
+            })
+            .catch(() => {})
+        }
       }
     } catch {}
     return origFetch.apply(this, arguments)
