@@ -11,7 +11,10 @@
   // page->extension bridge dropping it, or the service worker rejecting it.
   // From outside all three look identical: "nothing happened". So each one says
   // so out loud.
-  const log = (...args) => console.debug('%c[TB]', 'color:#6366f1;font-weight:bold', ...args)
+  // console.log, NOT console.debug: Chrome files debug under "Verbose", which
+  // is hidden by default. Diagnostics nobody can see are worse than none —
+  // they look like the code never ran.
+  const log = (...args) => console.log('%c[TB]', 'color:#6366f1;font-weight:bold', ...args)
 
   const post = (payload) => {
     log('-> forwarding to extension', payload.method, payload.url)

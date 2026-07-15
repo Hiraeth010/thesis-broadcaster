@@ -1,6 +1,8 @@
 // Isolated world: the page-world hook can't reach chrome.runtime, so this
 // bridges its postMessage traffic to the service worker.
-const log = (...args) => console.debug('%c[TB relay]', 'color:#22c55e;font-weight:bold', ...args)
+// console.log, NOT console.debug — Chrome hides debug behind the "Verbose"
+// level, so these were printing invisibly.
+const log = (...args) => console.log('%c[TB relay]', 'color:#22c55e;font-weight:bold', ...args)
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return
