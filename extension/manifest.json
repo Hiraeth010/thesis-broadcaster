@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "thesis broadcaster",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Broadcast your Solana trades to your own Discord, Telegram and X. Write the thesis on fomo, it posts itself.",
   "icons": {
     "16": "icons/16.png",

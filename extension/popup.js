@@ -80,32 +80,56 @@ async function load() {
     return
   }
 
+  const pick = (pattern, path) => async (ev) => {
+    const btn = ev.currentTarget
+    btn.disabled = true
+    btn.textContent = 'sending…'
+    const r = await send('learn', { pattern, field: path })
+    // Learning also posts this thesis, so say whether it actually went out.
+    state.innerHTML = r?.broadcast
+      ? `<span class="ok">Connected — and that thesis just went out.</span>`
+      : `<span class="ok">Connected.</span> That one didn't post (no matching trade, or already sent) — the next will.`
+    setTimeout(load, 1800)
+  }
+
+  const card = (c, f, primary) => {
+    const el = document.createElement('div')
+    el.className = 'card'
+    el.innerHTML = `
+      <div class="quote">“${esc(f.value.slice(0, 160))}${f.value.length > 160 ? '…' : ''}”</div>
+      <div class="path">${esc(c.pattern)} · ${esc(f.path)}</div>
+      <div class="row" style="margin-top:8px">
+        <span class="muted">${new Date(c.at).toLocaleTimeString()}</span>
+        <button class="${primary ? 'primary' : ''}">This is my thesis</button>
+      </div>`
+    el.querySelector('button').onclick = pick(c.pattern, f.path)
+    return el
+  }
+
   body.innerHTML = ''
+
+  const guesses = candidates.filter((c) => c.fields.length)
+  for (const c of guesses) for (const f of c.fields.slice(0, 3)) body.append(card(c, f, true))
+
+  if (!guesses.length) {
+    const note = document.createElement('div')
+    note.className = 'sub'
+    note.innerHTML = `Nothing looked obviously like a thesis. If you posted one, find it below and pick it by hand.`
+    body.append(note)
+  }
+
+  // The guess is only a guess — without a manual override, a thesis the
+  // heuristic doesn't like can never be connected at all.
+  const details = document.createElement('details')
+  details.innerHTML = `<summary>Everything else fomo sent (${candidates.length})</summary>`
   for (const c of candidates) {
-    for (const f of c.fields.slice(0, 3)) {
-      const el = document.createElement('div')
-      el.className = 'card'
-      el.innerHTML = `
-        <div class="quote">“${esc(f.value.slice(0, 160))}${f.value.length > 160 ? '…' : ''}”</div>
-        <div class="path">${esc(c.pattern)} · ${esc(f.path)}</div>
-        <div class="row" style="margin-top:8px">
-          <span class="muted">${new Date(c.at).toLocaleTimeString()}</span>
-          <button class="primary">This is my thesis</button>
-        </div>`
-      el.querySelector('button').onclick = async () => {
-        const btn = el.querySelector('button')
-        btn.disabled = true
-        btn.textContent = 'sending…'
-        const r = await send('learn', { pattern: c.pattern, field: f.path })
-        // Learning also posts this thesis, so say whether it actually went out.
-        state.innerHTML = r?.broadcast
-          ? `<span class="ok">Connected — and that thesis just went out.</span>`
-          : `<span class="ok">Connected.</span> That one didn't post (no matching trade, or already sent) — the next will.`
-        setTimeout(load, 1800)
-      }
-      body.append(el)
+    for (const f of c.allFields ?? []) {
+      if (c.fields.some((p) => p.path === f.path)) continue
+      details.append(card(c, f, false))
     }
   }
+  body.append(details)
+
   const foot = document.createElement('div')
   foot.innerHTML = openOptions
   body.append(foot)

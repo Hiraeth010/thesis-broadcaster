@@ -6,22 +6,47 @@
 // down between events, so a module-level array would be empty when the popup
 // asks for it.
 
-const MAX_CANDIDATES = 25
-const MAX_SEEN = 12
+const MAX_CANDIDATES = 40
+const MAX_SEEN = 40
+// A thesis endpoint fires once; RPC and analytics chatter fires constantly, so
+// the interesting request scrolls away fast if the buffer is small.
+const MAX_FIELDS = 14
+const FIELD_PREVIEW = 140
 
 // A thesis is prose: long enough to be a sentence, short enough to be a post,
 // and not an address/hash/id.
-const MIN_LEN = 12
+const MIN_LEN = 6
 const MAX_LEN = 2000
 
+function isIdish(v) {
+  if (/^[0-9a-fA-F]{16,}$/.test(v)) return true // hash
+  if (/^[0-9a-fA-F-]{32,}$/.test(v)) return true // uuid
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return true // base58 address
+  if (/^https?:\/\//.test(v)) return true
+  return false
+}
+
+/**
+ * Only used to *offer* candidates in the picker. Deliberately conservative:
+ * requiring a space keeps RPC method names and enum values out of the list.
+ * It is NOT applied once a field has been chosen — see acceptThesis.
+ */
 function looksLikeProse(v) {
   if (typeof v !== 'string') return false
   if (v.length < MIN_LEN || v.length > MAX_LEN) return false
-  if (/^[0-9a-fA-F]{32,}$/.test(v)) return false // hash
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return false // base58 address
-  if (/^https?:\/\//.test(v)) return false
+  if (isIdish(v)) return false
   if (!/\s/.test(v)) return false // single token, not a sentence
   return true
+}
+
+/**
+ * Once you've pointed at a field and said "this is my thesis", believe you.
+ * Re-running the discovery heuristic here silently dropped short theses on the
+ * correct, already-learned endpoint — the picker's job is guessing, this one's
+ * job is obeying.
+ */
+function acceptThesis(v) {
+  return typeof v === 'string' && v.trim().length > 0 && v.length <= MAX_LEN
 }
 
 /** Every string field in an object, with its dotted path. */
@@ -65,6 +90,13 @@ export function urlPattern(url) {
 
 export function describe(payload) {
   const fields = proseFields(payload.body)
+  // Every string field, not just the prose-looking ones, so the picker can be
+  // overridden by hand when the guess is wrong.
+  const allFields = [...walk(payload.body)]
+    .filter(([, v]) => v.trim() && !isIdish(v))
+    .slice(0, MAX_FIELDS)
+    .map(([path, value]) => ({ path, value: value.slice(0, FIELD_PREVIEW) }))
+
   return {
     id: `c${payload.at ?? Date.now()}`,
     transport: payload.transport ?? 'fetch',
@@ -72,7 +104,8 @@ export function describe(payload) {
     url: payload.url,
     pattern: urlPattern(payload.url),
     at: payload.at ?? Date.now(),
-    fields: fields.map(([path, value]) => ({ path, value })),
+    fields: fields.map(([path, value]) => ({ path, value: value.slice(0, FIELD_PREVIEW) })),
+    allFields,
     mint: findMint(payload.body),
   }
 }
@@ -97,7 +130,9 @@ export async function record(payload) {
   ].slice(0, MAX_SEEN)
   await chrome.storage.local.set({ seen: tally })
 
-  if (!entry.fields.length) return entry // nothing a human could pick
+  // Kept if it has ANY pickable string, not just prose — otherwise the real
+  // thesis request is thrown away before the user ever gets to choose it.
+  if (!entry.allFields.length) return entry
 
   const next = [entry, ...(candidates ?? [])].slice(0, MAX_CANDIDATES)
   await chrome.storage.local.set({ candidates: next })
@@ -127,7 +162,7 @@ export function match(learned, payload) {
   if (urlPattern(payload.url) !== learned.pattern) return null
 
   const thesis = getAtPath(payload.body, learned.field)
-  if (!looksLikeProse(thesis)) return null
+  if (!acceptThesis(thesis)) return null
 
   return { thesis: thesis.trim(), mint: findMint(payload.body) }
 }
