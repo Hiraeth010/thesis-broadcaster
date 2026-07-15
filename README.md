@@ -18,28 +18,25 @@ own browser.
 3. Click the extension → **Open dashboard** → paste your wallet address, connect a
    channel, Save.
 
-That's it. It watches your wallet and posts your trades.
+That's it. Write a thesis on fomo and it posts itself.
 
 ## How it works
 
 ```
-you trade on fomo (or anywhere on Solana)
-        ↓  spotted on-chain, within a minute
-an alert posts to your channels          ← automatic, no contract address
-        ↓
+you trade on fomo
+        ↓  the swap is recorded quietly — nothing is posted
 you write a thesis on fomo
         ↓
-a second post goes out: your words + the CA
+it posts: your words, the token, the CA, your handle
 ```
 
-**The contract address only ever appears on the thesis post.** The alert says a trade
-happened; the thesis is the one that invites people to act on it.
+**Your trades are never announced on their own.** The only thing that goes out is a
+thesis you chose to write. The chain is still read, but only so the post can carry the
+token, amount and contract address — fomo's thesis payload is just
+`{tradeId, comment}`, with none of that in it.
 
-Every thesis is a **new message**, never an edit. Post again and it sends another —
+Every thesis is a **new message**, never an edit. Post another and it sends another —
 useful when you're adding to a position or updating a call.
-
-Don't want the fomo hook? You can write the thesis in the dashboard instead. Prefer to
-approve everything by hand? Turn off auto-broadcast in Setup.
 
 ## Connecting your channels
 
@@ -91,12 +88,13 @@ a **relearn** (Forget → post once → pick again), not a broken extension.
 no binary and no OS-level background service. Trades made while Chrome is shut are
 caught up next time you open it.
 
-**Will it post my old trades?** No. The first time it sees your wallet it marks the
-spot and only watches from then on.
+**Will it post my old trades?** It never posts trades at all — only theses. (And the
+first time it sees your wallet it marks the spot, so old swaps aren't even recorded.)
 
-**Do I need an API key?** No. It defaults to a public Solana node that works fine. A
-free key from [helius.dev](https://helius.dev) makes it faster and more reliable if you
-trade a lot — Setup → Connection.
+**Do I need an API key?** No. It defaults to `https://solana-rpc.publicnode.com`, which
+works fine. Setup → **Solana connection** if you'd rather point it at your own
+Helius/QuickNode/Triton endpoint — paste the full URL, or just a free
+[helius.dev](https://helius.dev) key.
 
 **I set a custom RPC and get `403 Access forbidden`.** That endpoint refuses browser
 extensions. `api.mainnet-beta.solana.com` is the usual culprit — it 403s every browser

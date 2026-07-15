@@ -3,8 +3,6 @@ const channelsEl = document.getElementById('channels')
 const setupBody = document.getElementById('setup-body')
 const statusCard = document.getElementById('statusCard')
 
-// Drafts live here so a refresh can never clobber text being typed.
-const drafts = new Map()
 let lastKey = ''
 let lastStatusKey = ''
 let settingsRendered = false
@@ -29,17 +27,17 @@ function ago(ts) {
 // Secret fields are never populated with the real value. A blank box on a
 // configured secret means "leave it alone", so nothing can round-trip a display
 // value back over the stored one.
-function field(id, label, value, { type = 'text', hint, isSet } = {}) {
+function field(id, label, value, { type = 'text', hint, isSet, placeholder = '' } = {}) {
   const secret = type === 'password'
-  const placeholder = secret && isSet ? 'configured — leave blank to keep' : ''
+  const ph = secret && isSet ? 'configured — leave blank to keep' : placeholder
   return `
     <label for="${id}">${label}${secret && isSet ? ' <span class="ok">✓</span>' : ''}</label>
-    <input id="${id}" type="${type}" value="${secret ? '' : esc(value)}" placeholder="${placeholder}" />
+    <input id="${id}" type="${type}" value="${secret ? '' : esc(value)}" placeholder="${esc(ph)}" />
     ${hint ? `<div class="hint">${hint}</div>` : ''}
   `
 }
 
-function renderSetup(s) {
+function renderSetup(s, DEFAULT_RPC) {
   const set = s.configured ?? {}
   setupBody.innerHTML = `
     ${field('wallet', 'Your wallet address', s.wallet, {
@@ -61,15 +59,22 @@ function renderSetup(s) {
     </div>
 
     <details style="margin-top:14px">
-      <summary>Connection (optional — works without this)</summary>
+      <summary>Solana connection</summary>
+      ${field('rpcUrl', 'RPC endpoint', s.rpcUrl, {
+        placeholder: DEFAULT_RPC,
+        hint: `Blank uses the public default (${DEFAULT_RPC}). Paste your own Helius/QuickNode/Triton URL here to use it instead.`,
+      })}
       ${field('heliusApiKey', 'Helius API key', s.heliusApiKey, {
         type: 'password', isSet: set['heliusApiKey'],
-        hint: 'Free key from helius.dev. Without one it uses a public RPC, which is slower and rate-limited.',
+        hint: 'Alternative to a full URL — a free key from helius.dev. Ignored if an RPC endpoint is set above.',
       })}
-      ${field('rpcUrl', 'Custom RPC URL', s.rpcUrl, { hint: 'Overrides the Helius key if set.' })}
       ${field('pollMinutes', 'Check every (minutes)', s.pollMinutes, {
         hint: "Chrome won't allow less than 1.",
       })}
+      <div class="hint">
+        <span class="bad">Not api.mainnet-beta.solana.com</span> — it refuses browser
+        extensions with a 403.
+      </div>
     </details>
 
     <label>Discord</label>
@@ -108,13 +113,6 @@ function renderSetup(s) {
         <div>${field('x.accessSecret', 'Access secret', s.x.accessSecret, { type: 'password', isSet: set['x.accessSecret'] })}</div>
       </div>
     </details>
-
-    <div class="switch">
-      <input type="checkbox" id="autoBroadcast" ${s.autoBroadcast ? 'checked' : ''} />
-      <label for="autoBroadcast" style="margin:0">
-        Auto-broadcast the alert as soon as a swap lands (the thesis posts separately)
-      </label>
-    </div>
 
     <div class="actions">
       <button class="primary" id="save">Save</button>
@@ -156,7 +154,6 @@ function renderSetup(s) {
           telegram: get('ref.telegram').checked,
           x: get('ref.x').checked,
         },
-        autoBroadcast: get('autoBroadcast').checked,
         heliusApiKey: get('heliusApiKey').value.trim(),
         rpcUrl: get('rpcUrl').value.trim(),
         pollMinutes: Number(get('pollMinutes').value) || 1,
@@ -268,71 +265,58 @@ function resultLine(results) {
     .join(' · ')
 }
 
+/**
+ * A thesis that went out — what you wrote, on what, and where it landed. Trades
+ * without a thesis aren't shown: nothing was broadcast, so there's nothing to
+ * report.
+ */
 function render(t) {
   const el = document.createElement('div')
   el.className = 'card'
   const verb = t.side === 'BUY' ? 'Bought' : 'Sold'
+  const failed = t.status === 'failed'
 
   el.innerHTML = `
     <div class="row">
-      <span class="tag ${t.side === 'BUY' ? 'buy' : 'sell'}">${t.side}</span>
-      <span class="title">${verb} ${fmt(t.asset.amount)} ${esc(t.asset.symbol)}
-        for ${fmt(t.quote.amount)} ${esc(t.quote.symbol)}</span>
-      <span class="status">${t.status}</span>
+      <span class="tag ${failed ? 'sell' : 'buy'}">${failed ? 'FAILED' : 'POSTED'}</span>
+      <span class="title">${esc(t.asset.symbol)}</span>
+      <span class="status">${t.enrichedAt ? new Date(t.enrichedAt).toLocaleString() : ''}</span>
     </div>
+    <div class="quote">${esc(t.thesis)}</div>
     <div class="meta">
-      ${fmt(t.price)} ${esc(t.quote.symbol)} · ${esc(t.source)} ·
-      ${new Date(t.timestamp).toLocaleString()} ·
-      <a href="https://solscan.io/tx/${t.signature}" target="_blank" rel="noreferrer">tx</a>
+      ${verb} ${fmt(t.asset.amount)} ${esc(t.asset.symbol)} for ${fmt(t.quote.amount)} ${esc(t.quote.symbol)} ·
+      <a href="https://dexscreener.com/solana/${esc(t.asset.mint)}" target="_blank" rel="noreferrer">chart</a> ·
+      <a href="https://solscan.io/tx/${esc(t.signature)}" target="_blank" rel="noreferrer">tx</a>
     </div>
-    ${t.results ? `<div class="meta">alert — ${resultLine(t.results)}</div>` : ''}
-    ${t.thesisResults ? `<div class="meta">thesis ×${t.thesisPosts} — ${resultLine(t.thesisResults)}</div>` : ''}
+    ${t.thesisResults ? `<div class="meta">${t.thesisPosts > 1 ? `sent ×${t.thesisPosts} — ` : ''}${resultLine(t.thesisResults)}</div>` : ''}
   `
 
-  if (t.status === 'dismissed') return el
-
-  const ta = document.createElement('textarea')
-  ta.placeholder = 'Why did you take this trade? (posts a new message with the CA)'
-  ta.value = drafts.get(t.id) ?? t.thesis ?? ''
-  ta.addEventListener('input', () => drafts.set(t.id, ta.value))
+  // Only offered when something actually failed — a retry button on a delivered
+  // post is just an invitation to spam the channel twice.
+  if (!failed) return el
 
   const actions = document.createElement('div')
   actions.className = 'actions'
-
-  const post = document.createElement('button')
-  post.className = 'primary'
-  post.textContent = t.thesisPosts ? 'Post again' : 'Post thesis'
-
-  const dismiss = document.createElement('button')
-  dismiss.textContent = 'Dismiss'
-
+  const retry = document.createElement('button')
+  retry.className = 'primary'
+  retry.textContent = 'Retry'
   const status = document.createElement('span')
   status.className = 'status'
 
-  post.onclick = async () => {
-    if (!ta.value.trim()) return void (status.textContent = 'write a thesis first')
-    post.disabled = dismiss.disabled = true
+  retry.onclick = async () => {
+    retry.disabled = true
     status.textContent = 'sending…'
-    const r = await send('postThesis', { id: t.id, thesis: ta.value })
+    const r = await send('postThesis', { id: t.id, thesis: t.thesis })
     if (r?.error) {
       status.textContent = r.error
-      post.disabled = dismiss.disabled = false
+      retry.disabled = false
       return
     }
-    const failed = Object.entries(r?.results ?? {}).filter(([, v]) => !v.ok && !v.skipped)
-    if (failed.length) status.textContent = failed.map(([k, v]) => `${k}: ${v.reason}`).join(' · ')
-    drafts.delete(t.id)
     load({ force: true })
   }
 
-  dismiss.onclick = async () => {
-    await send('dismiss', { id: t.id })
-    drafts.delete(t.id)
-    load({ force: true })
-  }
-
-  actions.append(post, dismiss, status)
-  el.append(ta, actions)
+  actions.append(retry, status)
+  el.append(actions)
   return el
 }
 
@@ -345,19 +329,26 @@ async function load({ force = false } = {}) {
   const on = Object.entries(state.channels).filter(([, v]) => v).map(([k]) => k)
   channelsEl.textContent = on.length ? `channels: ${on.join(', ')}` : 'no channels configured'
 
-  if (!settingsRendered) renderSetup(state.settings)
+  if (!settingsRendered) renderSetup(state.settings, state.defaultRpc)
   renderStatus(state, { force })
 
-  const key = state.trades.map((t) => `${t.id}:${t.status}:${t.thesisPosts ?? 0}`).join('|')
+  // Only trades with a thesis. A swap on its own is never broadcast, so it has
+  // no place in a list of what went out.
+  const theses = state.trades.filter((t) => t.thesis?.trim() && t.status !== 'dismissed')
+
+  const key = theses.map((t) => `${t.id}:${t.status}:${t.thesisPosts ?? 0}`).join('|')
   if (!force && key === lastKey) return
   lastKey = key
 
-  if (!state.trades.length) {
-    list.innerHTML = `<div class="empty">No trades yet.<br />Trade on fomo and it shows up here within a minute.</div>`
+  if (!theses.length) {
+    list.innerHTML = `<div class="empty">
+      Nothing broadcast yet.<br />
+      Write a thesis on fomo and it appears here.
+    </div>`
     return
   }
   list.innerHTML = ''
-  for (const t of state.trades) list.append(render(t))
+  for (const t of theses) list.append(render(t))
 }
 
 load()

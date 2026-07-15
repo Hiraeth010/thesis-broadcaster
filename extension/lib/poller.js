@@ -5,7 +5,7 @@ import { getCursor, setCursor, setStatus } from './store.js'
 // browser origin, which is every request an extension makes. publicnode answers
 // cross-origin and doesn't rate-limit a burst of getTransaction calls the way
 // the official endpoint does.
-const PUBLIC_RPC = 'https://solana-rpc.publicnode.com'
+export const PUBLIC_RPC = 'https://solana-rpc.publicnode.com'
 
 // A long gap (browser closed overnight) shouldn't fan out a hundred posts.
 const MAX_PER_POLL = 15

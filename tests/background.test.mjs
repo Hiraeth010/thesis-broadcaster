@@ -107,19 +107,19 @@ let state = await send({ type: 'getState' })
 check('no trades broadcast on first sight of a wallet', state.trades.length === 0)
 check('nothing posted to discord', discordPosts.length === 0)
 
-console.log('\nA new swap alerts automatically\n')
+console.log('\nA swap is recorded but NEVER announced\n')
+// Your trades are your business. Chain data is read only so a thesis can carry
+// the token, amount and CA — a swap on its own must never reach a channel.
 const NEW = 'sigNew2222222222222222222222222222222222222'
 rpcSigs = [{ signature: NEW, err: null }]
 await send({ type: 'pollNow' })
 state = await send({ type: 'getState' })
 check('trade recorded', state.trades.length === 1)
-check('status alerted', state.trades[0]?.status === 'alerted', state.trades[0]?.status)
+check('but left queued, not alerted', state.trades[0]?.status === 'queued', state.trades[0]?.status)
 check('BUY parsed from the rpc tx', state.trades[0]?.side === 'BUY')
-check('alert posted to discord', discordPosts.length === 1)
-check('alert carries NO contract address', !discordPosts[0].fields.some((f) => f.name === 'CA'))
-check('alert carries the referral link (discord is free)', discordPosts[0].footer?.text === 'https://fomo.family/r/hiraeth')
+check('NOTHING was posted to discord', discordPosts.length === 0, `${discordPosts.length} posts`)
 
-console.log('\nA thesis from fomo posts separately, with the CA\n')
+console.log('\nA thesis from fomo is the only thing that posts\n')
 await send({ type: 'learn', pattern: 'abc.prod-edge.fomo.family/v2/trades/*/thesis', field: 'body' })
 const observed = {
   type: 'observed',
@@ -132,18 +132,20 @@ const observed = {
 }
 const r1 = await send(observed)
 check('broadcast fired', r1?.broadcast === true, JSON.stringify(r1))
-check('a SECOND discord message, not an edit', discordPosts.length === 2)
-check('thesis post carries the CA', discordPosts[1].fields.some((f) => f.name === 'CA' && f.value.includes(PUNCH)))
-check('thesis text is in the post', discordPosts[1].description === 'Reflexive floor while the story is still being told.')
+// The thesis is the FIRST message, because the swap itself sent nothing.
+check('exactly one message, the thesis', discordPosts.length === 1, `${discordPosts.length} posts`)
+check('thesis post carries the CA', discordPosts[0].fields.some((f) => f.name === 'CA' && f.value.includes(PUNCH)))
+check('thesis text is in the post', discordPosts[0].description === 'Reflexive floor while the story is still being told.')
+check('and the trade context that only chain data could give it', discordPosts[0].title.includes('Pnut'), discordPosts[0].title)
 
 const r2 = await send(observed)
-check('the same thesis twice does not double-post', r2?.broadcast === false && discordPosts.length === 2, JSON.stringify(r2))
+check('the same thesis twice does not double-post', r2?.broadcast === false && discordPosts.length === 1, JSON.stringify(r2))
 
 const r3 = await send({
   type: 'observed',
   payload: { method: 'POST', url: 'https://abc.prod-edge.fomo.family/v2/profile/bio', body: { body: 'an unrelated bio field long enough to be prose' }, at: Date.now() },
 })
-check('an unrelated endpoint is ignored', r3?.broadcast === false && discordPosts.length === 2)
+check('an unrelated endpoint is ignored', r3?.broadcast === false && discordPosts.length === 1)
 
 console.log('\nSecrets never reach the UI\n')
 state = await send({ type: 'getState' })
@@ -157,22 +159,31 @@ check('channels still report discord enabled', after.channels.discord === true)
 
 console.log('\nToken name, clickable CA, and byline\n')
 
-check('headline uses the real symbol, not the mint', discordPosts[0].title.includes('Pnut'), discordPosts[0].title)
+const post = discordPosts[0]
+check('headline uses the real symbol, not the mint', post.title.includes('Pnut'), post.title)
 check(
   'the token name is shown',
-  discordPosts[0].fields.some((f) => f.name === 'Token' && f.value === 'Peanut the Squirrel'),
-  JSON.stringify(discordPosts[0].fields)
+  post.fields.some((f) => f.name === 'Token' && f.value === 'Peanut the Squirrel'),
+  JSON.stringify(post.fields)
 )
-check('the alert links to the chart', discordPosts[0].url.includes('dexscreener.com/solana/' + PUNCH))
-check('the tx is still reachable', discordPosts[0].fields.some((f) => f.value.includes('solscan.io/tx/')))
+check('the post links to the chart', post.url.includes('dexscreener.com/solana/' + PUNCH))
+check('the tx is still reachable', post.fields.some((f) => f.value.includes('solscan.io/tx/')))
 
-const ca = discordPosts[1].fields.find((f) => f.name === 'CA')
+const ca = post.fields.find((f) => f.name === 'CA')
 check('the CA is clickable', ca.value.includes('](https://dexscreener.com/solana/' + PUNCH + ')'), ca.value)
 check('and still copyable as inline code', ca.value.includes('`' + PUNCH + '`'), ca.value)
 
+// A poll can't be used to trigger a post any more — only a thesis can.
 await send({ type: 'saveSettings', patch: { fomoUsername: '@Hiraethh' } })
-rpcSigs = [{ signature: 'sigThird333333333333333333333333333333333', err: null }]
-await send({ type: 'pollNow' })
+await send({
+  type: 'observed',
+  payload: {
+    method: 'POST',
+    url: 'https://abc.prod-edge.fomo.family/v2/trades/9f2a1b3c4d5e/thesis',
+    body: { mint: PUNCH, body: 'Adding here, byline should show now.' },
+    at: Date.now(),
+  },
+})
 check('posts carry the fomo username', discordPosts.at(-1).author?.name === '@Hiraethh', JSON.stringify(discordPosts.at(-1).author))
 check(
   'and the handle links to the fomo profile',
@@ -251,7 +262,8 @@ console.log('\nThe picker still works if fomo ever changes the endpoint\n')
 
   rpcSigs = [{ signature: 'sigLearn44444444444444444444444444444444', err: null }]
   await send({ type: 'pollNow' })
-  check('a fresh trade to attach to', discordPosts.length === before + 1)
+  // Recorded silently — the poll itself must post nothing.
+  check('a fresh trade to attach to, with no message sent', discordPosts.length === before)
 
   const moved = {
     type: 'observed',
@@ -273,7 +285,7 @@ console.log('\nThe picker still works if fomo ever changes the endpoint\n')
 
   const learned = await send({ type: 'learn', pattern: c.pattern, field: 'text' })
   check('picking it ALSO posts that thesis', learned.broadcast === true, JSON.stringify(learned))
-  check('a thesis message actually went out', discordPosts.length === before + 2)
+  check('a thesis message actually went out', discordPosts.length === before + 1)
   check('and it carries the CA', discordPosts.at(-1).fields.some((f) => f.name === 'CA'))
   check('and the thesis text', discordPosts.at(-1).description?.includes('fomo moved the endpoint'))
 

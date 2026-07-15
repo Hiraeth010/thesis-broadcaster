@@ -22,7 +22,6 @@ export const DEFAULTS = {
   referralLink: '',
   // Per-channel: on X a link turns a $0.015 post into a $0.200 one.
   referralChannels: { discord: true, telegram: true, x: false },
-  autoBroadcast: true,
   rpcUrl: '',
   heliusApiKey: '',
   pollMinutes: 1,

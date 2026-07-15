@@ -1,6 +1,6 @@
 import { loadSettings, saveSettings, publicSettings, enabledChannels, KNOWN_FOMO_THESIS } from './lib/settings.js'
 import { addTrade, getTrade, listTrades, updateTrade, setStatus, getStatus, clearCursor } from './lib/store.js'
-import { poll, checkRpc, rpcUrl, redactRpc } from './lib/poller.js'
+import { poll, checkRpc, rpcUrl, redactRpc, PUBLIC_RPC } from './lib/poller.js'
 import { resolveToken } from './lib/tokens.js'
 import { sendAll, anyOk } from './lib/broadcast/index.js'
 import { discoverChatId } from './lib/broadcast/telegram.js'
@@ -29,15 +29,10 @@ async function badge(text, color) {
   if (text) setTimeout(() => chrome.action.setBadgeText({ text: '' }), 5000)
 }
 
-async function alert(settings, trade) {
-  const results = await sendAll(settings, await withToken(trade), 'alert')
-  const ok = anyOk(results)
-  return updateTrade(trade.id, {
-    status: ok ? 'alerted' : 'failed',
-    alertedAt: ok ? Date.now() : null,
-    results,
-  })
-}
+// Trades are recorded but never announced. Your swaps are your business; the
+// only thing that goes out is a thesis you chose to write. Chain data is still
+// read because fomo's thesis payload is only {tradeId, comment} — the token,
+// amount, price and CA in the post all come from here.
 
 /**
  * Trades stored before token resolution existed (or resolved while an API was
@@ -64,12 +59,8 @@ async function ingest(settings, swap) {
 
   const trade = await addTrade(swap)
   if (!trade) return null
-  console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id}`)
-  if (!settings.autoBroadcast) return trade
-  const updated = await alert(settings, trade)
-  console.log(`[alert] ${trade.id} -> ${updated.status}`)
-  await badge('new', '#22c55e')
-  return updated
+  console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id} (recorded, not posted)`)
+  return trade
 }
 
 async function runPoll() {
@@ -166,6 +157,7 @@ const handlers = {
       settings: await publicSettings(),
       channels: enabledChannels(settings),
       status: { ...(await getStatus()), rpc: redactRpc(rpcUrl(settings)) },
+      defaultRpc: PUBLIC_RPC,
       trades: await listTrades(),
       candidates: await learn.listCandidates(),
       seen: await learn.getSeen(),
