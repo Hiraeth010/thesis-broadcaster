@@ -22,8 +22,25 @@ const refs = [
   ...m.content_scripts.flatMap((c) => c.js),
   m.action.default_popup,
   m.options_ui.page,
+  ...Object.values(m.icons ?? {}),
+  ...Object.values(m.action?.default_icon ?? {}),
 ]
-for (const r of refs) check(`referenced file exists: ${r}`, existsSync(resolve(root, r)))
+for (const r of [...new Set(refs)]) check(`referenced file exists: ${r}`, existsSync(resolve(root, r)))
+
+// Chrome wants all four; a missing size gets silently upscaled and looks bad.
+for (const size of ['16', '32', '48', '128']) {
+  check(`icon declared at ${size}px`, Boolean(m.icons?.[size]) && Boolean(m.action?.default_icon?.[size]))
+}
+
+// A truncated or zero-byte PNG loads as a blank square rather than an error.
+for (const [size, path] of Object.entries(m.icons ?? {})) {
+  const buf = readFileSync(resolve(root, path))
+  const isPng = buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  const width = buf.readUInt32BE(16)
+  const height = buf.readUInt32BE(20)
+  check(`${path} is a real PNG, ${size}x${size}`, isPng && width === Number(size) && height === Number(size),
+    `got ${width}x${height}`)
+}
 
 // The page-world hook cannot reach chrome.runtime, and the isolated-world relay
 // cannot hook the page's fetch — so both worlds must be present.

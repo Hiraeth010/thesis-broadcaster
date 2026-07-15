@@ -148,11 +148,22 @@ The poller's cursor only advances past signatures it actually dealt with. A
 Only a permanently unreadable tx ("not found" on a non-archive node) is skipped.
 Getting this wrong meant silently dropping every trade while looking healthy.
 
+### Icons
+
+```bash
+node tools/make-icons.mjs   # regenerates extension/icons/*.png
+```
+
+Generated, not drawn — `tools/make-icons.mjs` is a small PNG encoder (node's zlib is
+the only thing it needs) that renders the mark at each size with supersampled edges.
+The tile is coloured rather than dark or light, because a dark icon vanishes on a dark
+Chrome toolbar and a light one vanishes on a light one.
+
 ### Tests
 
 ```bash
 npm test                      # all suites
-node tests/manifest.test.mjs  # manifest + module graph
+node tests/manifest.test.mjs  # manifest, icons, module graph
 ```
 
 - `background.test.mjs` loads the **real service worker** with a stubbed `chrome` and
