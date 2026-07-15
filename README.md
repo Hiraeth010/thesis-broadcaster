@@ -212,15 +212,20 @@ API — including that a thesis full of `<script>` tags gets escaped rather than
 rejected. That is not the same as proving live Telegram accepts it: run
 `npm run test:telegram -- --live` with a real token to close that gap.
 
-**Background mode is verified on Windows, end to end and for real.** The task
-registers; the app runs hidden; killing the process brings it back on its own in
-~15–20s; the 1-minute repetition does not stack duplicates while it's alive; and
-uninstall removes the task, stops the running app, cleans up its files, and it stays
-stopped. Three mechanisms were tried before one worked — see `src/service.js`.
+**Background mode is verified on all three platforms, on real machines.**
 
-**macOS and Linux autostart have never executed.** The code is written and follows
-each platform's normal pattern, but it is unproven. Given Windows needed three
-attempts, expect these to need at least one.
+- **Windows** — tested by hand, end to end: the task registers, the app runs hidden,
+  killing it brings it back in ~15–20s, the 1-minute repetition doesn't stack
+  duplicates, and uninstall stops it and it stays stopped. Also verified using the
+  *published* binary from Releases, not just a local build. Three mechanisms were
+  tried before one worked — see the comments in `src/service.js`.
+- **macOS and Linux** — tested in CI on `macos-latest` and `ubuntu-latest`, which are
+  real machines of each OS. Both register, actually serve HTTP, and uninstall
+  cleanly: `launchctl list` shows `com.thesis-broadcaster` with a live PID, and
+  `systemctl --user` reports `active (running)`.
+
+Not covered by CI: reboot survival, and self-heal after a kill on macOS/Linux
+(Windows has both).
 
 **Not verified:** X has never run against live credentials. Treat as untested until
 you point a real app at it.
