@@ -71,8 +71,21 @@ nothing posts until you write a thesis and press the button.
 
 ## Common questions
 
-**Do I need to leave it running?** Yes — it watches while it's open. Close the window
-to stop.
+**Do I need to leave it running?** No. Tick **"Keep running in the background"** in the
+dashboard and it starts with your computer and stays running with no window — you only
+open `localhost:3031` when you want to write a thesis. Untick it to stop.
+
+It uses your OS's own mechanism: Task Scheduler on Windows, a LaunchAgent on macOS, a
+systemd user service on Linux. All three restart it if it ever crashes. Nothing is
+installed system-wide and no admin rights are needed.
+
+You can also do it from a terminal:
+
+```bash
+thesis-broadcaster --install     # background mode on
+thesis-broadcaster --status      # is it on?
+thesis-broadcaster --uninstall   # off again
+```
 
 **Will it post my old trades?** No. The first time it sees your wallet it marks the
 spot and only watches from then on.
@@ -190,6 +203,13 @@ ATA-rent dust, X's 280-char clamp keeping the CA intact, and secret round-trip s
 API — including that a thesis full of `<script>` tags gets escaped rather than
 rejected. That is not the same as proving live Telegram accepts it: run
 `npm run test:telegram -- --live` with a real token to close that gap.
+
+**Background mode is only verified as far as it can be without installing it.** The
+CLI, the status reporting, the dashboard toggle, headless detection (no browser
+stolen, logs tee'd to `data/app.log`) and the packaged binary's CLI are all confirmed.
+The actual `schtasks` / `launchctl` / `systemctl` registration has **not** been run —
+installing autostart is the user's call, not something to do to their machine
+unprompted. macOS and Linux paths are written but have never executed at all.
 
 **Not verified:** X has never run against live credentials. Treat as untested until
 you point a real app at it.

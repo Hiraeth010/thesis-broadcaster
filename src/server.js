@@ -1,13 +1,85 @@
 import express from 'express'
 import { exec } from 'node:child_process'
-import { packaged, publicDir } from './paths.js'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { dataDir, packaged, publicDir } from './paths.js'
 import { config } from './config.js'
+import * as service from './service.js'
 import { enabledChannels, envLocked, getSettings, maskedSettings, saveSettings } from './settings.js'
 import { parseWebhookBody } from './parse.js'
 import { addTrade, getTrade, listTrades, updateTrade } from './store.js'
 import { sendAll } from './broadcast/index.js'
 import { discoverChatId } from './broadcast/telegram.js'
 import { Poller, checkRpc, resetCursor } from './poller.js'
+
+// ---- cli --------------------------------------------------------------------
+
+const flag = process.argv.find((a) => a.startsWith('--'))
+
+if (flag === '--help' || flag === '-h') {
+  console.log(`
+  thesis broadcaster
+
+    (no arguments)   run it, opening the dashboard
+    --install        start automatically in the background from now on
+    --uninstall      stop starting automatically
+    --status         is background mode on?
+`)
+  process.exit(0)
+}
+
+if (flag === '--install') {
+  const r = service.install()
+  if (!r.ok) {
+    console.error(`\n  could not turn on background mode: ${r.reason}\n`)
+    process.exit(1)
+  }
+  console.log(`\n  background mode is ON.`)
+  console.log(`  it starts with your computer and keeps running.`)
+  console.log(`  dashboard: http://localhost:${config.port}`)
+  console.log(`  turn it off any time with --uninstall\n`)
+  process.exit(0)
+}
+
+if (flag === '--uninstall') {
+  const r = service.uninstall()
+  if (!r.ok) {
+    console.error(`\n  could not turn off background mode: ${r.reason}\n`)
+    process.exit(1)
+  }
+  console.log(`\n  background mode is OFF. it no longer starts on its own.\n`)
+  process.exit(0)
+}
+
+if (flag === '--status') {
+  const s = service.status()
+  console.log(
+    s.installed
+      ? `\n  background mode: ON${s.state ? ` (${s.state})` : ''}\n`
+      : `\n  background mode: OFF — turn it on with --install\n`
+  )
+  process.exit(0)
+}
+
+// ---- logging ----------------------------------------------------------------
+
+// Running in the background there is no console to print to, so tee everything
+// to a file the user (and the dashboard) can read.
+const headless = !process.stdout.isTTY
+if (headless) {
+  const logFile = join(dataDir, 'app.log')
+  mkdirSync(dataDir, { recursive: true })
+  for (const level of ['log', 'error', 'warn']) {
+    const orig = console[level].bind(console)
+    console[level] = (...args) => {
+      const line = `${new Date().toISOString()} ${args.join(' ')}\n`
+      try {
+        appendFileSync(logFile, line)
+      } catch {}
+      orig(...args)
+    }
+  }
+}
 
 const app = express()
 app.use(express.json({ limit: '5mb' }))
@@ -66,7 +138,18 @@ app.post('/webhook', async (req, res) => {
 })
 
 app.get('/api/status', async (_req, res) => {
-  res.json({ poller: poller.status(), channels: enabledChannels() })
+  res.json({
+    poller: poller.status(),
+    channels: enabledChannels(),
+    background: { ...service.status(), supported: service.supported },
+  })
+})
+
+app.post('/api/background', (req, res) => {
+  const on = Boolean(req.body?.enabled)
+  const r = on ? service.install() : service.uninstall()
+  if (!r.ok) return res.status(500).json({ error: r.reason })
+  res.json({ background: { ...service.status(), supported: service.supported } })
 })
 
 app.post('/api/status/check-rpc', async (_req, res) => {
@@ -141,7 +224,8 @@ app.post('/api/trades/:id/dismiss', (req, res) => {
 })
 
 function openBrowser(url) {
-  if (process.env.NO_OPEN) return
+  // Never steal focus when running as a background service.
+  if (process.env.NO_OPEN || headless) return
   const cmd =
     process.platform === 'win32' ? `start "" "${url}"`
     : process.platform === 'darwin' ? `open "${url}"`
@@ -160,7 +244,15 @@ app.listen(config.port, () => {
   console.log(`  ->  ${url}\n`)
   console.log(`  wallet:   ${s.wallet || 'not set yet - set it in the browser'}`)
   console.log(`  channels: ${on.length ? on.join(', ') : 'none yet'}`)
-  console.log(`  keep this window open. close it to stop.\n`)
+
+  if (!headless) {
+    const bg = service.status()
+    console.log(
+      bg.installed
+        ? `\n  background mode is ON - it also runs on its own.\n`
+        : `\n  keep this window open, or run --install to run in the background.\n`
+    )
+  }
 
   if (s.wallet) poller.start()
   openBrowser(url)

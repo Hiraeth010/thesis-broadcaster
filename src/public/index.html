@@ -253,9 +253,23 @@
         return s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`
       }
 
-      async function renderStatus() {
+      let lastStatusKey = ''
+
+      async function renderStatus({ force = false } = {}) {
         const { json } = await api('/api/status')
         const p = json.poller
+
+        // Re-rendering on every poll would reset the background checkbox while
+        // the user is toggling it, so only rebuild when something meaningful
+        // changed. The "checked Xs ago" label updates in place instead.
+        const key = [p.watching, p.lastError, p.baseline,
+                     json.background?.installed, json.background?.state].join('|')
+        if (!force && key === lastStatusKey) {
+          const el = statusCard.querySelector('#pollAgo')
+          if (el) el.textContent = `checked ${ago(p.lastPollAt)}`
+          return
+        }
+        lastStatusKey = key
 
         if (!p.watching) {
           statusCard.innerHTML = `
@@ -266,20 +280,53 @@
         }
 
         const bad = Boolean(p.lastError)
+        const bg = json.background ?? {}
         statusCard.innerHTML = `
           <div class="row">
             <span class="tag ${bad ? 'sell' : 'buy'}">${bad ? 'ERROR' : 'WATCHING'}</span>
             <span class="title">${p.watching.slice(0, 6)}…${p.watching.slice(-4)}</span>
-            <span class="status">checked ${ago(p.lastPollAt)}</span>
+            <span class="status" id="pollAgo">checked ${ago(p.lastPollAt)}</span>
           </div>
           <div class="meta">
             ${bad ? `<span class="bad">${p.lastError}</span>` : `rpc ${p.rpc}`}
             ${p.baseline ? ' · watching for new trades from now' : ' · setting baseline…'}
           </div>
+          ${
+            bg.supported
+              ? `<div class="switch">
+                   <input type="checkbox" id="bgToggle" ${bg.installed ? 'checked' : ''} />
+                   <label for="bgToggle" style="margin:0">
+                     Keep running in the background${bg.installed ? '' : ' — starts with your computer, no window needed'}
+                   </label>
+                   <span class="status" id="bgStatus">${bg.installed && bg.state ? bg.state : ''}</span>
+                 </div>`
+              : ''
+          }
           <div class="actions">
             <button id="testRpc">Test connection</button>
             <span class="status" id="rpcStatus"></span>
           </div>`
+
+        const bgToggle = statusCard.querySelector('#bgToggle')
+        if (bgToggle) {
+          bgToggle.onchange = async () => {
+            const el = statusCard.querySelector('#bgStatus')
+            el.textContent = 'working…'
+            bgToggle.disabled = true
+            const { ok, json: r } = await api('/api/background', {
+              method: 'POST',
+              body: JSON.stringify({ enabled: bgToggle.checked }),
+            })
+            bgToggle.disabled = false
+            if (!ok) {
+              el.innerHTML = `<span class="bad">${r.error ?? 'failed'}</span>`
+              bgToggle.checked = !bgToggle.checked
+              return
+            }
+            el.textContent = r.background?.installed ? 'on' : 'off'
+            renderStatus({ force: true })
+          }
+        }
 
         statusCard.querySelector('#testRpc').onclick = async () => {
           const el = statusCard.querySelector('#rpcStatus')
