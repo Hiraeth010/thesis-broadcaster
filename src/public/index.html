@@ -177,7 +177,12 @@
             <div>${field('x.accessToken', 'Access token', s.x.accessToken, { locked: locked.x, type: 'password', isSet: set['x.accessToken'] })}</div>
             <div>${field('x.accessSecret', 'Access secret', s.x.accessSecret, { locked: locked.x, type: 'password', isSet: set['x.accessSecret'] })}</div>
           </div>
-          <div class="hint">Create your own app at developer.x.com. Your keys, your quota.</div>
+          <div class="hint">
+            <span class="bad">X has no free tier since Feb 2026.</span>
+            It bills per post: <b>$0.015</b>, or <b>$0.20</b> if the post contains a link.
+            Your referral link is a link — leaving it blank makes X posts ~13× cheaper.
+            Your own app from developer.x.com, so the bill is yours.
+          </div>
 
           <div class="switch">
             <input type="checkbox" id="autoBroadcast" ${s.autoBroadcast ? 'checked' : ''} />

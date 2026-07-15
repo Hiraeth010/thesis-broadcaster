@@ -34,9 +34,17 @@ takes a minute.
 Add your bot to your channel **as an admin**, post any message there, then hit
 **Find my channels** and it fills in the rest.
 
-**X** — needs your own app from [developer.x.com](https://developer.x.com). More effort, and
-X changes their free limits often. Discord and Telegram are free and take a minute;
-start there.
+**X — costs real money now, read this first.** X killed its free API tier in February
+2026. It is [pay-per-use](https://docs.x.com/x-api/getting-started/pricing): **$0.015
+per post, or $0.200 if the post contains a link.** No free tier, no subscription.
+
+Your referral link is a link, so every post carrying it costs **$0.20** — about **$0.40
+per trade** once the alert and the thesis both go out. Leave the referral link blank and
+the same posts cost **$0.015** each: roughly 13× cheaper.
+
+You bring your own app from [developer.x.com](https://developer.x.com), so the bill is
+yours and nobody else's. Discord and Telegram are free and take a minute — start there,
+and add X only if it's worth $0.20 a post to you.
 
 You can connect one or all three. Anything you leave blank is simply skipped.
 
