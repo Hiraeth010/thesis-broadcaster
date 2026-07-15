@@ -1,27 +1,10 @@
 {
   "name": "thesis-broadcaster",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Broadcast your trade thesis to Discord, Telegram and X, triggered by your own on-chain swaps.",
-  "engines": {
-    "node": ">=20"
-  },
+  "description": "Chrome extension: broadcast your Solana trades to your own Discord, Telegram and X.",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "webhook:register": "node scripts/register-webhook.mjs register",
-    "webhook:list": "node scripts/register-webhook.mjs list",
-    "webhook:delete": "node scripts/register-webhook.mjs delete",
-    "build": "node scripts/build.mjs",
-    "test:telegram": "node scripts/test-telegram.mjs"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "twitter-api-v2": "^1.29.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.1"
+    "test": "node tests/run.mjs"
   }
 }

@@ -1,6 +1,6 @@
-import { getSettings } from '../settings.js'
-import { config } from '../config.js'
-import { contractAddress, headline, referralFor, solscanUrl } from './format.js'
+import { contractAddress, headline, referralFor, solscanUrl } from '../format.js'
+
+const API = 'https://api.telegram.org'
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -12,7 +12,7 @@ function bodyFor(trade, variant, referralLink) {
 
   if (isThesis) {
     if (trade.thesis?.trim()) lines.push(escapeHtml(trade.thesis.trim()))
-    // CA only on the thesis post.
+    // <code> makes the CA tap-to-copy in Telegram.
     lines.push(`CA: <code>${escapeHtml(contractAddress(trade))}</code>`)
   }
 
@@ -23,7 +23,7 @@ function bodyFor(trade, variant, referralLink) {
 }
 
 async function call(botToken, method, payload) {
-  const res = await fetch(`${config.telegramApiBase}/bot${botToken}/${method}`, {
+  const res = await fetch(`${API}/bot${botToken}/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
@@ -32,15 +32,13 @@ async function call(botToken, method, payload) {
   return { res, json }
 }
 
-export async function send(trade, variant = 'alert') {
-  const { telegram } = getSettings()
-  if (!telegram.botToken || !telegram.chatId) {
-    return { ok: false, skipped: true, reason: 'telegram not configured' }
-  }
+export async function send(settings, trade, variant = 'alert') {
+  const { botToken, chatId } = settings.telegram
+  if (!botToken || !chatId) return { ok: false, skipped: true, reason: 'telegram not configured' }
 
-  const { res, json } = await call(telegram.botToken, 'sendMessage', {
-    chat_id: telegram.chatId,
-    text: bodyFor(trade, variant, referralFor('telegram')),
+  const { res, json } = await call(botToken, 'sendMessage', {
+    chat_id: chatId,
+    text: bodyFor(trade, variant, referralFor(settings, 'telegram')),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })
@@ -53,7 +51,7 @@ export async function send(trade, variant = 'alert') {
 
 /**
  * Resolves the chat id for an existing channel: add the bot as an admin, post
- * once, then call this. Saves the user hunting through getUpdates by hand.
+ * once, then call this. Saves hunting through getUpdates by hand.
  */
 export async function discoverChatId(botToken) {
   const { res, json } = await call(botToken, 'getUpdates', {})

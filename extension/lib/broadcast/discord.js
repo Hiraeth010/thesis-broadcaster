@@ -1,5 +1,4 @@
-import { getSettings } from '../settings.js'
-import { contractAddress, fmtNum, headline, referralFor, solscanUrl } from './format.js'
+import { contractAddress, fmtNum, headline, referralFor, solscanUrl } from '../format.js'
 
 function embedFor(trade, variant, referralLink) {
   const isThesis = variant === 'thesis'
@@ -18,22 +17,20 @@ function embedFor(trade, variant, referralLink) {
   }
 
   // CA only on the thesis post.
-  if (isThesis) {
-    embed.fields.push({ name: 'CA', value: `\`${contractAddress(trade)}\`` })
-  }
+  if (isThesis) embed.fields.push({ name: 'CA', value: `\`${contractAddress(trade)}\`` })
   if (referralLink) embed.footer = { text: referralLink }
 
   return embed
 }
 
-export async function send(trade, variant = 'alert') {
-  const { discord } = getSettings()
-  if (!discord.webhookUrl) return { ok: false, skipped: true, reason: 'discord not configured' }
+export async function send(settings, trade, variant = 'alert') {
+  const url = settings.discord.webhookUrl
+  if (!url) return { ok: false, skipped: true, reason: 'discord not configured' }
 
-  const res = await fetch(`${discord.webhookUrl}?wait=true`, {
+  const res = await fetch(`${url}?wait=true`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ embeds: [embedFor(trade, variant, referralFor('discord'))] }),
+    body: JSON.stringify({ embeds: [embedFor(trade, variant, referralFor(settings, 'discord'))] }),
   })
 
   if (!res.ok) {

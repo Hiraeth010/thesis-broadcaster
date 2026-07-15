@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>thesis broadcaster</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b0f; --panel: #14141b; --line: #26262f;
+        --text: #e7e7ea; --muted: #8b8b96;
+        --buy: #22c55e; --sell: #ef4444; --accent: #6366f1;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        padding: 32px 20px 64px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+      h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600;
+           text-transform: uppercase; letter-spacing: 0.06em; }
+      .sub { color: var(--muted); font-size: 13px; margin: 6px 0 24px; }
+      .card { background: var(--panel); border: 1px solid var(--line);
+              border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+      .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+             padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; }
+      .buy { color: var(--buy); } .sell { color: var(--sell); }
+      .title { font-weight: 600; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .meta a { color: var(--muted); }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+      input, textarea {
+        width: 100%; background: #0e0e14; color: var(--text);
+        border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit;
+      }
+      textarea { min-height: 88px; resize: vertical; margin-top: 12px; }
+      input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+      .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+      button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px;
+               padding: 8px 14px; border: 1px solid var(--line); background: #1c1c25; color: var(--text); }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+      .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+      code { background: #0e0e14; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+      .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+      details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+      .ok { color: var(--buy); } .bad { color: var(--sell); }
+      .switch { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+      .switch input { width: auto; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>thesis broadcaster</h1>
+        <span id="channels" class="status"></span>
+      </header>
+      <div class="sub">
+        Runs in your browser. Keys stay on this machine — nothing is sent anywhere except
+        the channels you connect.
+      </div>
+
+      <div class="card" id="statusCard"></div>
+
+      <div class="card">
+        <details id="setup">
+          <summary>Setup — wallet &amp; channels</summary>
+          <div id="setup-body"></div>
+        </details>
+      </div>
+
+      <h2>Trades</h2>
+      <div id="list"></div>
+    </div>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

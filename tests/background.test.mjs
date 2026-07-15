@@ -1,0 +1,157 @@
+// Loads the real service worker with a stubbed chrome API and stubbed network,
+// then drives it the way Chrome would. This is as close to running it in the
+// browser as we can get without a browser.
+
+const store = new Map()
+const alarms = []
+const badges = []
+let onMessage = null
+
+globalThis.chrome = {
+  storage: {
+    local: {
+      async get(keys) {
+        const wanted = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys ?? {})
+        const out = {}
+        for (const k of wanted) if (store.has(k)) out[k] = structuredClone(store.get(k))
+        return out
+      },
+      async set(obj) {
+        for (const [k, v] of Object.entries(obj)) store.set(k, structuredClone(v))
+      },
+    },
+  },
+  alarms: { async create(name, opts) { alarms.push({ name, opts }) }, onAlarm: { addListener() {} } },
+  runtime: {
+    onInstalled: { addListener() {} },
+    onStartup: { addListener() {} },
+    onMessage: { addListener: (fn) => (onMessage = fn) },
+  },
+  action: {
+    async setBadgeText({ text }) { if (text) badges.push(text) },
+    async setBadgeBackgroundColor() {},
+  },
+}
+
+// ---- network stub -----------------------------------------------------------
+const WALLET = 'WalletAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const PUNCH = '2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump'
+const SIG = 'sigLiveTest111111111111111111111111111111111'
+
+const discordPosts = []
+let rpcSigs = []
+
+const json = (obj) => new Response(JSON.stringify(obj), { status: 200, headers: { 'content-type': 'application/json' } })
+
+globalThis.fetch = async (url, init) => {
+  const u = String(url)
+  const body = init?.body ? JSON.parse(init.body) : {}
+
+  if (u.includes('discord.com')) {
+    discordPosts.push(body.embeds[0])
+    return json({ id: `msg${discordPosts.length}` })
+  }
+  if (body.method === 'getSignaturesForAddress') return json({ result: rpcSigs })
+  if (body.method === 'getSlot') return json({ result: 123456 })
+  if (body.method === 'getTransaction') {
+    return json({
+      result: {
+        blockTime: 1784000000,
+        meta: {
+          err: null,
+          preBalances: [1_000_000_000], postBalances: [999_000_000],
+          preTokenBalances: [
+            { owner: WALLET, mint: USDC, uiTokenAmount: { uiAmount: 500 } },
+            { owner: WALLET, mint: PUNCH, uiTokenAmount: { uiAmount: 0 } },
+          ],
+          postTokenBalances: [
+            { owner: WALLET, mint: USDC, uiTokenAmount: { uiAmount: 250 } },
+            { owner: WALLET, mint: PUNCH, uiTokenAmount: { uiAmount: 41666.67 } },
+          ],
+        },
+        transaction: { message: { accountKeys: [{ pubkey: WALLET }] }, signatures: [SIG] },
+      },
+    })
+  }
+  throw new Error('unexpected fetch: ' + u)
+}
+
+await import('../extension/background.js')
+
+const send = (msg) => new Promise((resolve) => onMessage(msg, {}, resolve))
+
+let pass = 0
+let fail = 0
+const check = (n, c, d = '') => {
+  if (c) { pass++; console.log(`  PASS  ${n}`) } else { fail++; console.log(`  FAIL  ${n} ${d}`) }
+}
+
+console.log('\nService worker, driven as Chrome would\n')
+
+check('registers a message handler on load', typeof onMessage === 'function')
+
+await send({
+  type: 'saveSettings',
+  patch: { wallet: WALLET, discord: { webhookUrl: 'https://discord.com/api/webhooks/1/abc' }, referralLink: 'https://fomo.family/r/hiraeth' },
+})
+check('an alarm is scheduled on save', alarms.some((a) => a.name === 'poll'))
+check('alarm respects Chrome\'s 1-minute floor', alarms.at(-1).opts.periodInMinutes >= 1)
+
+console.log('\nFirst poll baselines instead of backfilling\n')
+rpcSigs = [{ signature: SIG, err: null }]
+await send({ type: 'pollNow' })
+let state = await send({ type: 'getState' })
+check('no trades broadcast on first sight of a wallet', state.trades.length === 0)
+check('nothing posted to discord', discordPosts.length === 0)
+
+console.log('\nA new swap alerts automatically\n')
+const NEW = 'sigNew2222222222222222222222222222222222222'
+rpcSigs = [{ signature: NEW, err: null }]
+await send({ type: 'pollNow' })
+state = await send({ type: 'getState' })
+check('trade recorded', state.trades.length === 1)
+check('status alerted', state.trades[0]?.status === 'alerted', state.trades[0]?.status)
+check('BUY parsed from the rpc tx', state.trades[0]?.side === 'BUY')
+check('alert posted to discord', discordPosts.length === 1)
+check('alert carries NO contract address', !discordPosts[0].fields.some((f) => f.name === 'CA'))
+check('alert carries the referral link (discord is free)', discordPosts[0].footer?.text === 'https://fomo.family/r/hiraeth')
+
+console.log('\nA thesis from fomo posts separately, with the CA\n')
+await send({ type: 'learn', pattern: 'abc.prod-edge.fomo.family/v2/trades/*/thesis', field: 'body' })
+const observed = {
+  type: 'observed',
+  payload: {
+    method: 'POST',
+    url: 'https://abc.prod-edge.fomo.family/v2/trades/9f2a1b3c4d5e/thesis',
+    body: { mint: PUNCH, body: 'Reflexive floor while the story is still being told.' },
+    at: Date.now(),
+  },
+}
+const r1 = await send(observed)
+check('broadcast fired', r1?.broadcast === true, JSON.stringify(r1))
+check('a SECOND discord message, not an edit', discordPosts.length === 2)
+check('thesis post carries the CA', discordPosts[1].fields.some((f) => f.name === 'CA' && f.value.includes(PUNCH)))
+check('thesis text is in the post', discordPosts[1].description === 'Reflexive floor while the story is still being told.')
+
+const r2 = await send(observed)
+check('the same thesis twice does not double-post', r2?.broadcast === false && discordPosts.length === 2, JSON.stringify(r2))
+
+const r3 = await send({
+  type: 'observed',
+  payload: { method: 'POST', url: 'https://abc.prod-edge.fomo.family/v2/profile/bio', body: { body: 'an unrelated bio field long enough to be prose' }, at: Date.now() },
+})
+check('an unrelated endpoint is ignored', r3?.broadcast === false && discordPosts.length === 2)
+
+console.log('\nSecrets never reach the UI\n')
+state = await send({ type: 'getState' })
+check('webhook url is blanked', state.settings.discord.webhookUrl === '')
+check('but reported as configured', state.settings.configured['discord.webhookUrl'] === true)
+
+await send({ type: 'saveSettings', patch: { discord: { webhookUrl: '' } } })
+const after = await send({ type: 'getState' })
+check('re-saving blank does not clobber the stored secret', after.settings.configured['discord.webhookUrl'] === true)
+check('channels still report discord enabled', after.channels.discord === true)
+
+console.log(`\n${pass} passed, ${fail} failed\n`)
+process.exit(fail ? 1 : 0)

@@ -1,11 +1,19 @@
 {
   "manifest_version": 3,
   "name": "thesis broadcaster",
-  "version": "0.3.0",
-  "description": "When you post a thesis on fomo, broadcast it to your own Discord, Telegram and X.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://localhost:3031/*"],
-  "background": { "service_worker": "background.js" },
+  "version": "0.4.0",
+  "description": "Broadcast your Solana trades to your own Discord, Telegram and X. Write the thesis on fomo, it posts itself.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "https://fomo.family/*",
+    "https://api.mainnet-beta.solana.com/*",
+    "https://mainnet.helius-rpc.com/*",
+    "https://discord.com/*",
+    "https://api.telegram.org/*",
+    "https://api.twitter.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [
     {
       "matches": ["https://fomo.family/*"],
@@ -20,5 +28,6 @@
       "world": "ISOLATED"
     }
   ],
-  "action": { "default_popup": "popup.html", "default_title": "thesis broadcaster" }
+  "action": { "default_popup": "popup.html", "default_title": "thesis broadcaster" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
 }

@@ -1,14 +1,12 @@
-import { getSettings, saveSettings } from './settings.js'
-
-// fomo has no public API and its thesis endpoint isn't discoverable from the
-// public bundle, so nothing here is hardcoded. The extension forwards the
-// requests your own tab already makes, and we learn which one carries a thesis
-// — either automatically, or by you pointing at it once.
+// fomo has no public API and its thesis endpoint isn't in the public bundle, so
+// nothing here is hardcoded. The hook forwards the requests your own tab already
+// makes, and we learn which one carries a thesis — you point at it once.
 //
-// Nothing is stored beyond the last few candidates, in memory, on your machine.
+// Candidates live in chrome.storage, not memory: the service worker is torn
+// down between events, so a module-level array would be empty when the popup
+// asks for it.
 
 const MAX_CANDIDATES = 25
-const candidates = []
 
 // A thesis is prose: long enough to be a sentence, short enough to be a post,
 // and not an address/hash/id.
@@ -39,7 +37,6 @@ export function getAtPath(obj, path) {
   return path.split('.').reduce((o, k) => o?.[k], obj)
 }
 
-/** Prose fields in a payload, best candidate first. */
 function proseFields(body) {
   return [...walk(body)]
     .filter(([, v]) => looksLikeProse(v))
@@ -54,7 +51,7 @@ function findMint(body) {
   return null
 }
 
-function urlPattern(url) {
+export function urlPattern(url) {
   try {
     const u = new URL(url)
     // Ids in the path would make the pattern too specific to match next time.
@@ -65,10 +62,10 @@ function urlPattern(url) {
   }
 }
 
-export function record(payload) {
+export function describe(payload) {
   const fields = proseFields(payload.body)
-  const entry = {
-    id: `c${Date.now()}${candidates.length}`,
+  return {
+    id: `c${payload.at ?? Date.now()}`,
     method: payload.method,
     url: payload.url,
     pattern: urlPattern(payload.url),
@@ -76,36 +73,37 @@ export function record(payload) {
     fields: fields.map(([path, value]) => ({ path, value })),
     mint: findMint(payload.body),
   }
-  candidates.unshift(entry)
-  candidates.length = Math.min(candidates.length, MAX_CANDIDATES)
+}
+
+export async function record(payload) {
+  const entry = describe(payload)
+  if (!entry.fields.length) return entry // nothing a human could pick
+
+  const { candidates } = await chrome.storage.local.get('candidates')
+  const next = [entry, ...(candidates ?? [])].slice(0, MAX_CANDIDATES)
+  await chrome.storage.local.set({ candidates: next })
   return entry
 }
 
-export function listCandidates() {
-  return candidates.filter((c) => c.fields.length)
+export async function listCandidates() {
+  const { candidates } = await chrome.storage.local.get('candidates')
+  return candidates ?? []
+}
+
+export async function clearCandidates() {
+  await chrome.storage.local.set({ candidates: [] })
 }
 
 /**
  * Once learned, a payload matching the same endpoint + field path is treated as
  * a thesis without asking again.
  */
-export function match(payload) {
-  const { extension } = getSettings()
-  if (!extension?.pattern || !extension?.field) return null
-  if (urlPattern(payload.url) !== extension.pattern) return null
+export function match(learned, payload) {
+  if (!learned?.pattern || !learned?.field) return null
+  if (urlPattern(payload.url) !== learned.pattern) return null
 
-  const thesis = getAtPath(payload.body, extension.field)
+  const thesis = getAtPath(payload.body, learned.field)
   if (!looksLikeProse(thesis)) return null
 
   return { thesis: thesis.trim(), mint: findMint(payload.body) }
-}
-
-export function learn({ pattern, field }) {
-  saveSettings({ extension: { pattern, field, learnedAt: Date.now() } })
-  return getSettings().extension
-}
-
-export function forget() {
-  saveSettings({ extension: { pattern: '', field: '', learnedAt: 0 } })
-  return getSettings().extension
 }

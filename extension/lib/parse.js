@@ -134,8 +134,3 @@ export function parseRpcSwap(tx, wallet, signature) {
     source: 'ON-CHAIN',
   })
 }
-
-export function parseWebhookBody(body, wallet) {
-  const txs = Array.isArray(body) ? body : [body]
-  return txs.map((tx) => parseSwap(tx, wallet)).filter(Boolean)
-}
