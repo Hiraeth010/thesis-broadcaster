@@ -9,9 +9,26 @@ export function solscanUrl(signature) {
   return `https://solscan.io/tx/${signature}`
 }
 
+export function chartUrl(mint) {
+  return `https://dexscreener.com/solana/${mint}`
+}
+
 export function headline(trade) {
   const verb = trade.side === 'BUY' ? 'Bought' : 'Sold'
   return `${verb} ${fmtNum(trade.asset.amount)} ${trade.asset.symbol} for ${fmtNum(trade.quote.amount)} ${trade.quote.symbol}`
+}
+
+/** The token's full name, only when it says more than the ticker already does. */
+export function tokenName(trade) {
+  const { name, symbol } = trade.asset
+  if (!name || name === symbol) return ''
+  return name
+}
+
+/** "— @handle", or nothing. Appended so posts are attributable to you. */
+export function byline(settings) {
+  const handle = settings.fomoUsername?.trim().replace(/^@/, '')
+  return handle ? `@${handle}` : ''
 }
 
 /**

@@ -7,6 +7,10 @@
 
 export const DEFAULTS = {
   wallet: '',
+  // Just typed in. Looking it up would mean querying fomo for who owns a
+  // wallet, which is the one thing this deliberately never does — and you
+  // already know your own handle.
+  fomoUsername: '',
   referralLink: '',
   // Per-channel: on X a link turns a $0.015 post into a $0.200 one.
   referralChannels: { discord: true, telegram: true, x: false },

@@ -1,4 +1,6 @@
-import { contractAddress, headline, referralFor, solscanUrl } from '../format.js'
+import {
+  byline, chartUrl, contractAddress, headline, referralFor, solscanUrl, tokenName,
+} from '../format.js'
 
 const API = 'https://api.telegram.org'
 
@@ -6,19 +8,26 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function bodyFor(trade, variant, referralLink) {
+function bodyFor(trade, variant, referralLink, who) {
   const isThesis = variant === 'thesis'
-  const lines = [`<b>${escapeHtml(headline(trade))}</b>`]
+  const mint = contractAddress(trade)
+  const name = tokenName(trade)
+
+  const head = `<a href="${chartUrl(mint)}">${escapeHtml(headline(trade))}</a>`
+  const lines = [`<b>${head}</b>${who ? ` — ${escapeHtml(who)}` : ''}`]
+  if (name) lines.push(escapeHtml(name))
 
   if (isThesis) {
     if (trade.thesis?.trim()) lines.push(escapeHtml(trade.thesis.trim()))
-    // <code> makes the CA tap-to-copy in Telegram.
-    lines.push(`CA: <code>${escapeHtml(contractAddress(trade))}</code>`)
+    // Telegram won't nest <a> inside <code>, and tap-to-copy beats a link for a
+    // CA — so the address stays copyable and the chart gets its own link.
+    lines.push(`CA: <code>${escapeHtml(mint)}</code>`)
+    lines.push(`<a href="${chartUrl(mint)}">chart</a> · <a href="${solscanUrl(trade.signature)}">tx</a>`)
+  } else {
+    lines.push(`<a href="${solscanUrl(trade.signature)}">view tx</a>`)
   }
 
-  lines.push(`<a href="${solscanUrl(trade.signature)}">view tx</a>`)
   if (referralLink) lines.push(escapeHtml(referralLink))
-
   return lines.filter(Boolean).join('\n\n')
 }
 
@@ -38,7 +47,7 @@ export async function send(settings, trade, variant = 'alert') {
 
   const { res, json } = await call(botToken, 'sendMessage', {
     chat_id: chatId,
-    text: bodyFor(trade, variant, referralFor(settings, 'telegram')),
+    text: bodyFor(trade, variant, referralFor(settings, 'telegram'), byline(settings)),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })

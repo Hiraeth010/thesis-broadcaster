@@ -1,6 +1,7 @@
 import { loadSettings, saveSettings, publicSettings, enabledChannels } from './lib/settings.js'
 import { addTrade, getTrade, listTrades, updateTrade, setStatus, getStatus, clearCursor } from './lib/store.js'
 import { poll, checkRpc, rpcUrl, redactRpc } from './lib/poller.js'
+import { resolveToken } from './lib/tokens.js'
 import { sendAll, anyOk } from './lib/broadcast/index.js'
 import { discoverChatId } from './lib/broadcast/telegram.js'
 import * as learn from './lib/learn.js'
@@ -39,6 +40,12 @@ async function alert(settings, trade) {
 }
 
 async function ingest(settings, swap) {
+  // Resolved once, at ingest, so the stored trade carries a real name and every
+  // later post is consistent even if the lookup starts failing.
+  const token = await resolveToken(swap.asset.mint)
+  swap.asset.symbol = token.symbol
+  swap.asset.name = token.name
+
   const trade = await addTrade(swap)
   if (!trade) return null
   console.log(`[trade] ${trade.side} ${trade.asset.symbol} — ${trade.id}`)

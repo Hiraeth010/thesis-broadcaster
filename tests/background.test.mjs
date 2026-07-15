@@ -52,6 +52,8 @@ globalThis.fetch = async (url, init) => {
     discordPosts.push(body.embeds[0])
     return json({ id: `msg${discordPosts.length}` })
   }
+  if (u.includes('lite-api.jup.ag')) return json([{ id: PUNCH, symbol: 'Pnut', name: 'Peanut the Squirrel' }])
+  if (u.includes('dexscreener')) return json({ pairs: [] })
   if (body.method === 'getSignaturesForAddress') return json({ result: rpcSigs })
   if (body.method === 'getSlot') return json({ result: 123456 })
   if (body.method === 'getTransaction') {
@@ -152,6 +154,39 @@ await send({ type: 'saveSettings', patch: { discord: { webhookUrl: '' } } })
 const after = await send({ type: 'getState' })
 check('re-saving blank does not clobber the stored secret', after.settings.configured['discord.webhookUrl'] === true)
 check('channels still report discord enabled', after.channels.discord === true)
+
+console.log('\nToken name, clickable CA, and byline\n')
+
+check('headline uses the real symbol, not the mint', discordPosts[0].title.includes('Pnut'), discordPosts[0].title)
+check(
+  'the token name is shown',
+  discordPosts[0].fields.some((f) => f.name === 'Token' && f.value === 'Peanut the Squirrel'),
+  JSON.stringify(discordPosts[0].fields)
+)
+check('the alert links to the chart', discordPosts[0].url.includes('dexscreener.com/solana/' + PUNCH))
+check('the tx is still reachable', discordPosts[0].fields.some((f) => f.value.includes('solscan.io/tx/')))
+
+const ca = discordPosts[1].fields.find((f) => f.name === 'CA')
+check('the CA is clickable', ca.value.includes('](https://dexscreener.com/solana/' + PUNCH + ')'), ca.value)
+check('and still copyable as inline code', ca.value.includes('`' + PUNCH + '`'), ca.value)
+
+await send({ type: 'saveSettings', patch: { fomoUsername: '@hiraeth' } })
+rpcSigs = [{ signature: 'sigThird333333333333333333333333333333333', err: null }]
+await send({ type: 'pollNow' })
+check('posts carry the fomo username', discordPosts.at(-1).author?.name === '@hiraeth', JSON.stringify(discordPosts.at(-1).author))
+
+const { composeX } = await import('../extension/lib/broadcast/x.js')
+const xTrade = {
+  side: 'BUY',
+  asset: { mint: PUNCH, amount: 41666.67, symbol: 'Pnut', name: 'Peanut the Squirrel' },
+  quote: { amount: 250, symbol: 'USDC' },
+  thesis: 'Reflexive floor.',
+}
+const xThesis = composeX(xTrade, 'thesis', '', '@hiraeth')
+check('X carries the byline', xThesis.includes('@hiraeth'), xThesis)
+check('X carries the CA', xThesis.includes(PUNCH))
+check('X has NO link — a link costs 13x more', !/https?:\/\//.test(xThesis), xThesis)
+check('X still fits 280', xThesis.length <= 280, String(xThesis.length))
 
 console.log(`\n${pass} passed, ${fail} failed\n`)
 process.exit(fail ? 1 : 0)

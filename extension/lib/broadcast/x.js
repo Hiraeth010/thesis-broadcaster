@@ -1,4 +1,4 @@
-import { contractAddress, headline, referralFor } from '../format.js'
+import { byline, contractAddress, headline, referralFor } from '../format.js'
 
 const LIMIT = 280
 const ENDPOINT = 'https://api.twitter.com/2/tweets'
@@ -70,9 +70,11 @@ export async function signOAuth1({ method, url, creds, oauthParams, extraParams 
  * Builds within X's 280 chars by trimming the thesis rather than the CA — the
  * CA is the actionable part of a thesis post, so it must survive intact.
  */
-export function composeX(trade, variant, referralLink) {
+export function composeX(trade, variant, referralLink, who = '') {
   const isThesis = variant === 'thesis'
-  const fixed = [headline(trade)]
+  const fixed = [who ? `${headline(trade)} — ${who}` : headline(trade)]
+  // The CA stays plain text here on purpose: any link turns a $0.015 post into
+  // a $0.200 one, so we never linkify it on X.
   if (isThesis) fixed.push(`CA: ${contractAddress(trade)}`)
   if (referralLink) fixed.push(referralLink)
 
@@ -98,7 +100,7 @@ export async function send(settings, trade, variant = 'alert') {
     return { ok: false, skipped: true, reason: 'x not configured' }
   }
 
-  const text = composeX(trade, variant, referralFor(settings, 'x'))
+  const text = composeX(trade, variant, referralFor(settings, 'x'), byline(settings))
   const { header } = await signOAuth1({
     method: 'POST',
     url: ENDPOINT,

@@ -45,6 +45,9 @@ function renderSetup(s) {
     ${field('wallet', 'Your wallet address', s.wallet, {
       hint: 'Swaps from this wallet trigger a broadcast.',
     })}
+    ${field('fomoUsername', 'Your fomo username (optional)', s.fomoUsername, {
+      hint: 'Shown on every post so people know whose call it is. Just your handle.',
+    })}
     ${field('referralLink', 'Referral link', s.referralLink)}
     <div class="switch" style="gap:14px; flex-wrap:wrap">
       <span class="hint" style="margin:0">add it to:</span>
@@ -146,6 +149,7 @@ function renderSetup(s) {
     await send('saveSettings', {
       patch: {
         wallet: get('wallet').value.trim(),
+        fomoUsername: get('fomoUsername').value.trim(),
         referralLink: get('referralLink').value.trim(),
         referralChannels: {
           discord: get('ref.discord').checked,
