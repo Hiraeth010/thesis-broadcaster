@@ -31,6 +31,12 @@ export function byline(settings) {
   return handle ? `@${handle}` : ''
 }
 
+/** Your fomo profile, or '' when no handle is set. */
+export function profileUrl(settings) {
+  const handle = settings.fomoUsername?.trim().replace(/^@/, '')
+  return handle ? `https://fomo.family/profile/${encodeURIComponent(handle)}` : ''
+}
+
 /**
  * The contract address is deliberately absent from the alert and present only
  * on the thesis post — the alert says a trade happened, the thesis is what

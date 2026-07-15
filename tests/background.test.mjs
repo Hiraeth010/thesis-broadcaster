@@ -170,10 +170,15 @@ const ca = discordPosts[1].fields.find((f) => f.name === 'CA')
 check('the CA is clickable', ca.value.includes('](https://dexscreener.com/solana/' + PUNCH + ')'), ca.value)
 check('and still copyable as inline code', ca.value.includes('`' + PUNCH + '`'), ca.value)
 
-await send({ type: 'saveSettings', patch: { fomoUsername: '@hiraeth' } })
+await send({ type: 'saveSettings', patch: { fomoUsername: '@Hiraethh' } })
 rpcSigs = [{ signature: 'sigThird333333333333333333333333333333333', err: null }]
 await send({ type: 'pollNow' })
-check('posts carry the fomo username', discordPosts.at(-1).author?.name === '@hiraeth', JSON.stringify(discordPosts.at(-1).author))
+check('posts carry the fomo username', discordPosts.at(-1).author?.name === '@Hiraethh', JSON.stringify(discordPosts.at(-1).author))
+check(
+  'and the handle links to the fomo profile',
+  discordPosts.at(-1).author?.url === 'https://fomo.family/profile/Hiraethh',
+  JSON.stringify(discordPosts.at(-1).author)
+)
 
 const { composeX } = await import('../extension/lib/broadcast/x.js')
 const xTrade = {
@@ -182,8 +187,8 @@ const xTrade = {
   quote: { amount: 250, symbol: 'USDC' },
   thesis: 'Reflexive floor.',
 }
-const xThesis = composeX(xTrade, 'thesis', '', '@hiraeth')
-check('X carries the byline', xThesis.includes('@hiraeth'), xThesis)
+const xThesis = composeX(xTrade, 'thesis', '', '@Hiraethh')
+check('X carries the byline', xThesis.includes('@Hiraethh'), xThesis)
 check('X carries the CA', xThesis.includes(PUNCH))
 check('X has NO link — a link costs 13x more', !/https?:\/\//.test(xThesis), xThesis)
 check('X still fits 280', xThesis.length <= 280, String(xThesis.length))

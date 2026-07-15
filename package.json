@@ -1,6 +1,6 @@
 {
   "name": "thesis-broadcaster",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "Chrome extension: broadcast your Solana trades to your own Discord, Telegram and X.",

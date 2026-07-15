@@ -1,8 +1,8 @@
 import {
-  byline, chartUrl, contractAddress, fmtNum, headline, referralFor, solscanUrl, tokenName,
+  byline, chartUrl, contractAddress, fmtNum, headline, profileUrl, referralFor, solscanUrl, tokenName,
 } from '../format.js'
 
-function embedFor(trade, variant, referralLink, who) {
+function embedFor(trade, variant, referralLink, who, whoUrl) {
   const isThesis = variant === 'thesis'
   const mint = contractAddress(trade)
 
@@ -11,7 +11,9 @@ function embedFor(trade, variant, referralLink, who) {
     url: chartUrl(mint),
     description: isThesis ? trade.thesis?.trim() || undefined : undefined,
     color: trade.side === 'BUY' ? 0x22c55e : 0xef4444,
-    author: who ? { name: who } : undefined,
+    // An embed author renders as a link when given a url, so the handle points
+    // at your fomo profile.
+    author: who ? { name: who, url: whoUrl || undefined } : undefined,
     fields: [
       { name: 'Side', value: trade.side, inline: true },
       { name: 'Price', value: `${fmtNum(trade.price)} ${trade.quote.symbol}`, inline: true },
@@ -41,7 +43,9 @@ export async function send(settings, trade, variant = 'alert') {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      embeds: [embedFor(trade, variant, referralFor(settings, 'discord'), byline(settings))],
+      embeds: [
+        embedFor(trade, variant, referralFor(settings, 'discord'), byline(settings), profileUrl(settings)),
+      ],
     }),
   })
 

@@ -1,5 +1,5 @@
 import {
-  byline, chartUrl, contractAddress, headline, referralFor, solscanUrl, tokenName,
+  byline, chartUrl, contractAddress, headline, profileUrl, referralFor, solscanUrl, tokenName,
 } from '../format.js'
 
 const API = 'https://api.telegram.org'
@@ -8,13 +8,14 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function bodyFor(trade, variant, referralLink, who) {
+function bodyFor(trade, variant, referralLink, who, whoUrl) {
   const isThesis = variant === 'thesis'
   const mint = contractAddress(trade)
   const name = tokenName(trade)
 
   const head = `<a href="${chartUrl(mint)}">${escapeHtml(headline(trade))}</a>`
-  const lines = [`<b>${head}</b>${who ? ` — ${escapeHtml(who)}` : ''}`]
+  const handle = whoUrl ? `<a href="${whoUrl}">${escapeHtml(who)}</a>` : escapeHtml(who)
+  const lines = [`<b>${head}</b>${who ? ` — ${handle}` : ''}`]
   if (name) lines.push(escapeHtml(name))
 
   if (isThesis) {
@@ -47,7 +48,7 @@ export async function send(settings, trade, variant = 'alert') {
 
   const { res, json } = await call(botToken, 'sendMessage', {
     chat_id: chatId,
-    text: bodyFor(trade, variant, referralFor(settings, 'telegram'), byline(settings)),
+    text: bodyFor(trade, variant, referralFor(settings, 'telegram'), byline(settings), profileUrl(settings)),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })
