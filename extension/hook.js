@@ -1,10 +1,10 @@
-// Runs in the page's own world so it can wrap fetch/XHR before the app uses them.
+// Runs in the page's own world so it can wrap fetch/XHR/WebSocket before the
+// app uses them.
 //
 // It reads nothing but the requests this tab is already making, and forwards
-// only what looks like a thesis to your own machine on localhost. No session
-// token, no cookie, no auth header is ever captured or sent anywhere.
+// only what looks like a thesis to the extension. No session token, cookie or
+// auth header is ever captured — headers are dropped entirely, bodies only.
 ;(() => {
-  const RELAY = 'https://__thesis_broadcaster__'
   const MAX_BODY = 20_000
 
   const post = (payload) => {
@@ -22,23 +22,32 @@
     }
   }
 
-  // Auth material must never leave the page, so bodies are forwarded but
-  // headers are dropped entirely.
-  function report(method, url, body) {
-    if (!body || typeof body !== 'string') return
-    if (body.length > MAX_BODY) return
-    if (!/^(POST|PUT|PATCH)$/i.test(method)) return
+  function isFomo(absUrl) {
+    try {
+      return /(^|\.)fomo\.family$/.test(new URL(absUrl).hostname)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Everything fomo-bound is reported so the popup can tell "the hook isn't
+   * running" apart from "the hook is running but nothing looks like a thesis".
+   * Only JSON bodies can ever become candidates.
+   */
+  function report(transport, method, url, body) {
+    if (typeof body !== 'string' || !body || body.length > MAX_BODY) return
 
     const abs = absolute(url)
-    if (!/(^|\.)fomo\.family/.test(new URL(abs).hostname)) return
+    if (transport !== 'ws' && !isFomo(abs)) return
 
-    let parsed
+    let parsed = null
     try {
       parsed = JSON.parse(body)
     } catch {
-      return // only structured payloads are candidates
+      // not JSON — still counted, never a candidate
     }
-    post({ method, url: abs, body: parsed, at: Date.now() })
+    post({ transport, method, url: abs, body: parsed, at: Date.now() })
   }
 
   const origFetch = window.fetch
@@ -46,8 +55,9 @@
     try {
       const url = typeof input === 'string' ? input : input?.url
       const method = init?.method ?? (typeof input === 'object' ? input?.method : 'GET') ?? 'GET'
-      const body = init?.body
-      if (typeof body === 'string') report(method, url, body)
+      if (/^(POST|PUT|PATCH)$/i.test(method) && typeof init?.body === 'string') {
+        report('fetch', method, url, init.body)
+      }
     } catch {}
     return origFetch.apply(this, arguments)
   }
@@ -60,10 +70,32 @@
   }
   XMLHttpRequest.prototype.send = function (body) {
     try {
-      if (this.__tb && typeof body === 'string') report(this.__tb.method, this.__tb.url, body)
+      if (this.__tb && /^(POST|PUT|PATCH)$/i.test(this.__tb.method) && typeof body === 'string') {
+        report('xhr', this.__tb.method, this.__tb.url, body)
+      }
     } catch {}
     return origSend.apply(this, arguments)
   }
 
-  console.log('[thesis-broadcaster] watching this tab for theses you post')
+  // fomo's CSP allows wss://*.prod-edge.fomo.family, so a thesis may never
+  // touch fetch at all. Without this the hook is structurally blind to it.
+  const OrigWS = window.WebSocket
+  if (OrigWS) {
+    const Wrapped = function (url, protocols) {
+      const ws = protocols === undefined ? new OrigWS(url) : new OrigWS(url, protocols)
+      const origWsSend = ws.send.bind(ws)
+      ws.send = function (data) {
+        try {
+          if (typeof data === 'string' && isFomo(absolute(url))) report('ws', 'SEND', url, data)
+        } catch {}
+        return origWsSend(data)
+      }
+      return ws
+    }
+    Wrapped.prototype = OrigWS.prototype
+    for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) Wrapped[k] = OrigWS[k]
+    window.WebSocket = Wrapped
+  }
+
+  console.log('[thesis-broadcaster] watching this tab (fetch, xhr, websocket)')
 })()

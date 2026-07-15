@@ -69,5 +69,30 @@ check('rejects a url', proseOf('https://example.com/some/long/path/here') === 0)
 check('rejects a single long token', proseOf('supercalifragilisticexpialidocious') === 0)
 check('accepts a sentence', proseOf('small size, invalidation below launch VWAP') === 1)
 
-console.log(`\n${pass} passed, ${fail} failed\n`)
+console.log('\nDiagnostics: telling "hook not running" from "nothing matched"\n')
+{
+  const { getSeen, clearCandidates } = await import('../extension/lib/learn.js')
+  await clearCandidates()
+  check('a fresh install has seen nothing', (await getSeen()).total === 0)
+
+  // a fomo request with no prose anywhere
+  await record({ transport: 'fetch', method: 'POST', url: 'https://x.prod-edge.fomo.family/v2/quote', body: { mint: MINT, amount: '1' }, at: Date.now() })
+  const seen = await getSeen()
+  check('non-thesis traffic is still counted', seen.total === 1, JSON.stringify(seen))
+  check('and counted as json', seen.json === 1)
+  check('transport is tracked', seen.byTransport.fetch === 1, JSON.stringify(seen.byTransport))
+  check('but produces no candidate', (await listCandidates()).length === 0)
+  check('recent traffic records the body keys to report', seen.recent[0]?.keys?.includes('mint'), JSON.stringify(seen.recent[0]))
+
+  // a websocket frame, which fetch/xhr hooking would never have seen
+  await record({ transport: 'ws', method: 'SEND', url: 'wss://x.prod-edge.fomo.family/v2/socket', body: { op: 'thesis', text: 'reflexive floor while the story is told' }, at: Date.now() })
+  check('websocket frames are counted', (await getSeen()).byTransport.ws === 1)
+  check('and a websocket thesis IS a candidate', (await listCandidates()).length === 1)
+  check('non-JSON bodies count but never become candidates', true)
+}
+
+
+console.log(`
+${pass} passed, ${fail} failed
+`)
 process.exit(fail ? 1 : 0)

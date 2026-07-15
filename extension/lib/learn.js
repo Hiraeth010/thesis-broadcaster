@@ -7,6 +7,7 @@
 // asks for it.
 
 const MAX_CANDIDATES = 25
+const MAX_SEEN = 12
 
 // A thesis is prose: long enough to be a sentence, short enough to be a post,
 // and not an address/hash/id.
@@ -66,6 +67,7 @@ export function describe(payload) {
   const fields = proseFields(payload.body)
   return {
     id: `c${payload.at ?? Date.now()}`,
+    transport: payload.transport ?? 'fetch',
     method: payload.method,
     url: payload.url,
     pattern: urlPattern(payload.url),
@@ -75,11 +77,28 @@ export function describe(payload) {
   }
 }
 
+/**
+ * Everything the hook sees is counted, but only payloads with a prose field can
+ * be picked. The counters exist so the popup can tell "the hook isn't running"
+ * apart from "the hook is running but fomo never sends a thesis this way" —
+ * without them, both look identical and there's nothing to debug with.
+ */
 export async function record(payload) {
   const entry = describe(payload)
+  const { candidates, seen } = await chrome.storage.local.get(['candidates', 'seen'])
+
+  const tally = seen ?? { total: 0, json: 0, byTransport: {}, recent: [] }
+  tally.total++
+  if (payload.body) tally.json++
+  tally.byTransport[entry.transport] = (tally.byTransport[entry.transport] ?? 0) + 1
+  tally.recent = [
+    { pattern: entry.pattern, transport: entry.transport, at: entry.at, keys: payload.body ? Object.keys(payload.body).slice(0, 8) : null },
+    ...(tally.recent ?? []),
+  ].slice(0, MAX_SEEN)
+  await chrome.storage.local.set({ seen: tally })
+
   if (!entry.fields.length) return entry // nothing a human could pick
 
-  const { candidates } = await chrome.storage.local.get('candidates')
   const next = [entry, ...(candidates ?? [])].slice(0, MAX_CANDIDATES)
   await chrome.storage.local.set({ candidates: next })
   return entry
@@ -90,8 +109,13 @@ export async function listCandidates() {
   return candidates ?? []
 }
 
+export async function getSeen() {
+  const { seen } = await chrome.storage.local.get('seen')
+  return seen ?? { total: 0, json: 0, byTransport: {}, recent: [] }
+}
+
 export async function clearCandidates() {
-  await chrome.storage.local.set({ candidates: [] })
+  await chrome.storage.local.set({ candidates: [], seen: { total: 0, json: 0, byTransport: {}, recent: [] } })
 }
 
 /**

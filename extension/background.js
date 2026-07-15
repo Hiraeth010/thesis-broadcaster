@@ -119,6 +119,7 @@ const handlers = {
       status: { ...(await getStatus()), rpc: redactRpc(rpcUrl(settings)) },
       trades: await listTrades(),
       candidates: await learn.listCandidates(),
+      seen: await learn.getSeen(),
     }
   },
 
