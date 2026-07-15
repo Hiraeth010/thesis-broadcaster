@@ -7,7 +7,14 @@
 ;(() => {
   const MAX_BODY = 20_000
 
+  // Three hops can each fail silently — the wrapper never seeing the call, the
+  // page->extension bridge dropping it, or the service worker rejecting it.
+  // From outside all three look identical: "nothing happened". So each one says
+  // so out loud.
+  const log = (...args) => console.debug('%c[TB]', 'color:#6366f1;font-weight:bold', ...args)
+
   const post = (payload) => {
+    log('-> forwarding to extension', payload.method, payload.url)
     window.postMessage({ source: 'thesis-broadcaster', payload }, window.location.origin)
   }
 
@@ -36,10 +43,17 @@
    * Only JSON bodies can ever become candidates.
    */
   function report(transport, method, url, body) {
-    if (typeof body !== 'string' || !body || body.length > MAX_BODY) return
+    if (typeof body !== 'string' || !body || body.length > MAX_BODY) {
+      log('dropped (no string body)', method, url)
+      return
+    }
 
     const abs = absolute(url)
-    if (transport !== 'ws' && !isFomo(abs)) return
+    if (transport !== 'ws' && !isFomo(abs)) {
+      log('dropped (not fomo)', method, abs)
+      return
+    }
+    log('captured', method, abs)
 
     let parsed = null
     try {
@@ -58,6 +72,10 @@
       const method = init?.method ?? (isRequest ? input.method : 'GET') ?? 'GET'
 
       if (/^(POST|PUT|PATCH)$/i.test(method)) {
+        // Logged before any filtering: if this line never appears for a request
+        // you can see in the Network tab, the page got a reference to fetch
+        // before we wrapped it, and nothing downstream can help.
+        log('saw', method, url, '| init.body:', typeof init?.body, '| Request:', isRequest)
         const body = init?.body
 
         if (typeof body === 'string') {

@@ -118,7 +118,12 @@ async function postThesis(settings, trade, thesis) {
 
 async function onObserved(payload) {
   const settings = await loadSettings()
-  await learn.record(payload)
+  const entry = await learn.record(payload)
+  console.log(
+    `[ext] observed ${payload.method} ${entry.pattern}` +
+      ` | guesses: ${entry.fields.map((f) => f.path).join(',') || 'none'}` +
+      ` | pickable: ${(entry.allFields ?? []).map((f) => f.path).join(',') || 'none'}`
+  )
 
   // Every outcome is logged. A thesis that doesn't go out used to leave no
   // trace at all, which made it impossible to tell "not taught yet" from
