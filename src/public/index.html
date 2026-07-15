@@ -302,7 +302,7 @@
         if (!settingsRendered) await renderSetup()
         await renderStatus()
 
-        const key = trades.map((t) => `${t.id}:${t.status}`).join('|')
+        const key = trades.map((t) => `${t.id}:${t.status}:${t.thesisPosts ?? 0}`).join('|')
         if (!force && key === lastKey) return
         lastKey = key
 
@@ -341,16 +341,15 @@
             ${fmt(t.price)} ${t.quote.symbol} · ${t.source} ·
             ${new Date(t.timestamp).toLocaleString()} ·
             <a href="https://solscan.io/tx/${t.signature}" target="_blank" rel="noreferrer">tx</a>
-            ${t.results ? ' · ' + resultLine(t.results) : ''}
           </div>
+          ${t.results ? `<div class="meta">alert — ${resultLine(t.results)}</div>` : ''}
+          ${t.thesisResults ? `<div class="meta">thesis ×${t.thesisPosts} — ${resultLine(t.thesisResults)}</div>` : ''}
         `
 
         if (t.status === 'dismissed') return el
 
         const ta = document.createElement('textarea')
-        ta.placeholder = t.status === 'queued'
-          ? 'Why did you take this trade? (sends the post)'
-          : 'Add your thesis — this edits the post that already went out'
+        ta.placeholder = 'Why did you take this trade? (posts a new message with the CA)'
         ta.value = drafts.get(t.id) ?? t.thesis ?? ''
         ta.addEventListener('input', () => drafts.set(t.id, ta.value))
 
@@ -359,7 +358,7 @@
 
         const send = document.createElement('button')
         send.className = 'primary'
-        send.textContent = t.status === 'queued' ? 'Broadcast' : 'Update post'
+        send.textContent = t.thesisPosts ? 'Post again' : 'Post thesis'
 
         const dismiss = document.createElement('button')
         dismiss.textContent = 'Dismiss'

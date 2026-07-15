@@ -1,10 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import 'dotenv/config'
+import { dataDir } from './paths.js'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const dataDir = join(root, 'data')
 const path = join(dataDir, 'config.json')
 
 // Secrets live on this machine only — data/ is gitignored and nothing is sent

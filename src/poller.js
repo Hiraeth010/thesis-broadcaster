@@ -1,11 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { getSettings } from './settings.js'
 import { parseRpcSwap } from './parse.js'
+import { dataDir } from './paths.js'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const dataDir = join(root, 'data')
 const cursorPath = join(dataDir, 'cursor.json')
 
 const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com'

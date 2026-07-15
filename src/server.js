@@ -1,18 +1,27 @@
 import express from 'express'
 import { exec } from 'node:child_process'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { packaged, publicDir } from './paths.js'
 import { config } from './config.js'
 import { enabledChannels, envLocked, getSettings, maskedSettings, saveSettings } from './settings.js'
 import { parseWebhookBody } from './parse.js'
 import { addTrade, getTrade, listTrades, updateTrade } from './store.js'
-import { sendAll, editAll } from './broadcast/index.js'
+import { sendAll } from './broadcast/index.js'
 import { discoverChatId } from './broadcast/telegram.js'
 import { Poller, checkRpc, resetCursor } from './poller.js'
 
 const app = express()
 app.use(express.json({ limit: '5mb' }))
-app.use(express.static(join(dirname(fileURLToPath(import.meta.url)), 'public')))
+
+// The packaged binary has no files on disk, so the dashboard is embedded as a
+// SEA asset. getBuiltinModule keeps this valid in both ESM source and the
+// bundled CJS output — a bare require() would not be.
+if (packaged) {
+  const { getAsset } = process.getBuiltinModule('node:sea')
+  const html = getAsset('index.html', 'utf8')
+  app.get('/', (_req, res) => res.type('html').send(html))
+} else {
+  app.use(express.static(publicDir))
+}
 
 function anyOk(results) {
   return Object.values(results).some((r) => r.ok)
@@ -110,15 +119,17 @@ app.put('/api/trades/:id/thesis', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'not found' })
   if (!thesis.trim()) return res.status(400).json({ error: 'thesis is empty' })
 
+  // Always a fresh post, never an edit — and this is the only message that
+  // carries the CA. Posting again sends another message by design.
   const trade = updateTrade(existing.id, { thesis })
-  const results = trade.status === 'queued' ? await sendAll(trade) : await editAll(trade)
+  const results = await sendAll(trade, 'thesis')
   const ok = anyOk(results)
 
   const updated = updateTrade(trade.id, {
     status: ok ? 'enriched' : 'failed',
-    alertedAt: trade.alertedAt ?? (ok ? Date.now() : null),
     enrichedAt: ok ? Date.now() : null,
-    results,
+    thesisResults: results,
+    thesisPosts: (existing.thesisPosts ?? 0) + (ok ? 1 : 0),
   })
   res.json({ trade: updated, results })
 })

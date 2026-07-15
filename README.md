@@ -8,20 +8,21 @@ Runs on your own computer. Your keys never leave it.
 
 ## Get started
 
-**1. Install Node.js** (once) — [nodejs.org](https://nodejs.org), click the big green LTS button.
+**Download it** from [Releases](https://github.com/Hiraeth010/thesis-broadcaster/releases) —
+one file, nothing to install. Double-click it. Your browser opens.
 
-**2. Start it**
+Then paste your wallet address in the Setup box and connect a channel. That's it.
 
-- **Windows** — double-click `start.bat`
-- **Mac / Linux** — double-click `start.sh` (or `./start.sh` in a terminal)
+There's nothing to host, no account to make, no port to open, and no Node.js to install.
 
-The first run installs things and takes a minute. Your browser opens automatically.
+<details>
+<summary>Running from source instead</summary>
 
-**3. Fill in the Setup box**
+Install [Node.js](https://nodejs.org) (the green LTS button), then double-click
+`start.bat` (Windows) or `start.sh` (Mac/Linux). First run installs dependencies and
+takes a minute.
 
-Paste your wallet address. Connect a channel. That's it — it starts watching.
-
-There's nothing to host, no account to make, no port to open.
+</details>
 
 ---
 
@@ -39,6 +40,8 @@ start there.
 
 You can connect one or all three. Anything you leave blank is simply skipped.
 
+On X, a long thesis is trimmed to fit 280 characters — the CA is never trimmed.
+
 ---
 
 ## How it works
@@ -48,14 +51,18 @@ you make a trade  (on fomo, or anywhere else on Solana)
         ↓
   we spot it on-chain, within ~15 seconds
         ↓
-  a post goes out to your channels          ← automatic, you do nothing
+  an alert goes out to your channels        ← automatic, no contract address
         ↓
   you write your thesis when you feel like it
         ↓
-  the post updates itself with it           ← same post, no spam
+  a second post goes out with your reasoning + the CA
 ```
 
-On X it posts your thesis as a reply instead, because X has no edit button.
+**The contract address only ever appears on the thesis post.** The alert just says a
+trade happened; the thesis is the one that invites people to act on it.
+
+Every thesis is a **new message**, never an edit. Post again on the same trade and it
+sends another one — useful for adding to a position, or updating your call.
 
 Prefer to check before anything goes out? Turn off **auto-broadcast** in Setup and
 nothing posts until you write a thesis and press the button.
@@ -133,6 +140,19 @@ this wrong meant silently dropping every trade while looking healthy — see the
 `.env` takes precedence over the Setup UI, so dotfile users are unaffected. Anything
 set in `.env` shows as locked in the UI.
 
+### Building the binary
+
+```bash
+npm run build     # -> build/thesis-broadcaster[.exe], ~90 MB
+```
+
+Node's SEA support, so **it cannot cross-compile** — each platform builds its own.
+CI (`.github/workflows/build.yml`) builds all three and smoke-tests that each binary
+actually boots and serves before uploading. Tag `v*` to publish a release.
+
+`src/paths.js` is the seam: packaged builds resolve `data/` next to the executable
+and serve the dashboard from an embedded SEA asset; source runs read from disk.
+
 ### Testing without a real trade
 
 ```bash
@@ -145,15 +165,18 @@ node scripts/sample-webhook.mjs sell
 
 ## Status
 
-**Verified:** setup → save → swap → instant alert → thesis → in-place edit, against a
-mock receiver. Parser validated against **real mainnet blocks**. Cursor logic tested
-across four RPC failure modes (healthy / rate-limited / not-found / partial). Plus
-auto-broadcast toggle, empty-thesis rejection, dedupe, quote-to-quote filtering,
-ATA-rent dust, and secret round-trip safety.
+**Verified:** setup → save → swap → alert (no CA) → thesis → separate post (with CA),
+against a mock receiver — including posting a thesis twice and getting two distinct
+messages. The standalone `.exe` was tested in an empty folder with no Node, no
+`node_modules` and no source: it boots, serves the embedded dashboard, and writes
+`data/` beside itself. Parser validated against **real mainnet blocks**. Cursor logic
+tested across four RPC failure modes (healthy / rate-limited / not-found / partial).
+Plus auto-broadcast toggle, empty-thesis rejection, dedupe, quote-to-quote filtering,
+ATA-rent dust, X's 280-char clamp keeping the CA intact, and secret round-trip safety.
 
 **Not verified:** Telegram and X are implemented but have never run against live
 credentials. Treat as untested until you point real ones at them.
 
-**Not done:** thesis templates, a bundled Node runtime (still requires installing
-Node), and the optional browser extension for reading a thesis written in fomo's own
+**Not done:** thesis templates, code signing (Windows/macOS will warn on an unsigned
+binary), and the optional browser extension for reading a thesis written in fomo's own
 UI (ToS-gray — read the discussion before shipping that).

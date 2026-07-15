@@ -1,19 +1,24 @@
 import { getSettings } from '../settings.js'
-import { headline, solscanUrl } from './format.js'
+import { contractAddress, headline, solscanUrl } from './format.js'
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function bodyFor(trade, referralLink) {
-  return [
-    `<b>${escapeHtml(headline(trade))}</b>`,
-    trade.thesis?.trim() ? escapeHtml(trade.thesis.trim()) : '',
-    `<a href="${solscanUrl(trade.signature)}">view tx</a>`,
-    referralLink ? escapeHtml(referralLink) : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+function bodyFor(trade, variant, referralLink) {
+  const isThesis = variant === 'thesis'
+  const lines = [`<b>${escapeHtml(headline(trade))}</b>`]
+
+  if (isThesis) {
+    if (trade.thesis?.trim()) lines.push(escapeHtml(trade.thesis.trim()))
+    // CA only on the thesis post.
+    lines.push(`CA: <code>${escapeHtml(contractAddress(trade))}</code>`)
+  }
+
+  lines.push(`<a href="${solscanUrl(trade.signature)}">view tx</a>`)
+  if (referralLink) lines.push(escapeHtml(referralLink))
+
+  return lines.filter(Boolean).join('\n\n')
 }
 
 async function call(botToken, method, payload) {
@@ -26,7 +31,7 @@ async function call(botToken, method, payload) {
   return { res, json }
 }
 
-export async function send(trade) {
+export async function send(trade, variant = 'alert') {
   const { telegram, referralLink } = getSettings()
   if (!telegram.botToken || !telegram.chatId) {
     return { ok: false, skipped: true, reason: 'telegram not configured' }
@@ -34,7 +39,7 @@ export async function send(trade) {
 
   const { res, json } = await call(telegram.botToken, 'sendMessage', {
     chat_id: telegram.chatId,
-    text: bodyFor(trade, referralLink),
+    text: bodyFor(trade, variant, referralLink),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })
@@ -43,27 +48,6 @@ export async function send(trade) {
     return { ok: false, reason: `telegram ${res.status}: ${JSON.stringify(json).slice(0, 200)}` }
   }
   return { ok: true, ref: json.result?.message_id ?? null }
-}
-
-export async function edit(trade, ref) {
-  const { telegram, referralLink } = getSettings()
-  if (!telegram.botToken || !telegram.chatId) {
-    return { ok: false, skipped: true, reason: 'telegram not configured' }
-  }
-  if (!ref) return { ok: false, reason: 'no telegram message ref to edit' }
-
-  const { res, json } = await call(telegram.botToken, 'editMessageText', {
-    chat_id: telegram.chatId,
-    message_id: ref,
-    text: bodyFor(trade, referralLink),
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-  })
-
-  if (!res.ok || !json.ok) {
-    return { ok: false, reason: `telegram edit ${res.status}: ${JSON.stringify(json).slice(0, 200)}` }
-  }
-  return { ok: true, ref }
 }
 
 /**

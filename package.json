@@ -12,11 +12,15 @@
     "dev": "node --watch src/server.js",
     "webhook:register": "node scripts/register-webhook.mjs register",
     "webhook:list": "node scripts/register-webhook.mjs list",
-    "webhook:delete": "node scripts/register-webhook.mjs delete"
+    "webhook:delete": "node scripts/register-webhook.mjs delete",
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "twitter-api-v2": "^1.29.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

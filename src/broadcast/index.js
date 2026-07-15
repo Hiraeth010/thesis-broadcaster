@@ -12,29 +12,16 @@ async function run(name, fn) {
   }
 }
 
-/** Posts the initial alert. Returns per-channel results carrying a message ref. */
-export async function sendAll(trade) {
-  const results = {}
-  await Promise.all(
-    Object.entries(channels).map(async ([name, ch]) => {
-      results[name] = await run(name, () => ch.send(trade))
-    })
-  )
-  return results
-}
-
 /**
- * Updates an already-sent alert with the thesis. Channels that were never sent
- * (skipped or failed) get a fresh send instead of an edit.
+ * Posts to every configured channel. `variant` is 'alert' (the trade landed) or
+ * 'thesis' (a fresh post carrying the reasoning and the CA). Each call is a new
+ * message — nothing is edited in place.
  */
-export async function editAll(trade) {
+export async function sendAll(trade, variant = 'alert') {
   const results = {}
   await Promise.all(
     Object.entries(channels).map(async ([name, ch]) => {
-      const prior = trade.results?.[name]
-      results[name] = prior?.ok
-        ? await run(name, () => ch.edit(trade, prior.ref))
-        : await run(name, () => ch.send(trade))
+      results[name] = await run(name, () => ch.send(trade, variant))
     })
   )
   return results

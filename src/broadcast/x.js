@@ -1,6 +1,6 @@
 import { TwitterApi } from 'twitter-api-v2'
 import { getSettings } from '../settings.js'
-import { headline, plainText } from './format.js'
+import { contractAddress, headline } from './format.js'
 
 const LIMIT = 280
 
@@ -15,41 +15,36 @@ function client() {
   })
 }
 
-function clamp(text) {
-  return text.length <= LIMIT ? text : `${text.slice(0, LIMIT - 1)}…`
+/**
+ * Builds within X's 280 chars by trimming the thesis rather than the CA — the
+ * CA is the actionable part of a thesis post, so it must survive intact.
+ */
+export function composeX(trade, variant, referralLink) {
+  const isThesis = variant === 'thesis'
+  const fixed = [headline(trade)]
+  if (isThesis) fixed.push(`CA: ${contractAddress(trade)}`)
+  if (referralLink) fixed.push(referralLink)
+
+  const fixedText = fixed.join('\n\n')
+  const thesis = isThesis ? trade.thesis?.trim() : ''
+  if (!thesis) return fixedText.slice(0, LIMIT)
+
+  const room = LIMIT - fixedText.length - 2 // the blank line before the thesis
+  if (room < 12) return fixedText.slice(0, LIMIT)
+
+  const body = thesis.length <= room ? thesis : `${thesis.slice(0, room - 1)}…`
+  return [fixed[0], body, ...fixed.slice(1)].join('\n\n')
 }
 
-export async function send(trade) {
+export async function send(trade, variant = 'alert') {
   const api = client()
   if (!api) return { ok: false, skipped: true, reason: 'x not configured' }
 
+  const { referralLink } = getSettings()
   try {
-    const { data } = await api.v2.tweet(clamp(plainText(trade)))
+    const { data } = await api.v2.tweet(composeX(trade, variant, referralLink))
     return { ok: true, ref: data?.id ?? null }
   } catch (err) {
     return { ok: false, reason: `x: ${err.message}` }
   }
 }
-
-/**
- * X has no edit endpoint on the API, so a thesis added after the fact posts as
- * a reply to the original alert rather than rewriting it.
- */
-export async function edit(trade, ref) {
-  const api = client()
-  if (!api) return { ok: false, skipped: true, reason: 'x not configured' }
-  if (!ref) return { ok: false, reason: 'no x post ref to reply to' }
-  if (!trade.thesis?.trim()) return { ok: true, ref }
-
-  try {
-    const { data } = await api.v2.tweet({
-      text: clamp(trade.thesis.trim()),
-      reply: { in_reply_to_tweet_id: ref },
-    })
-    return { ok: true, ref, replyId: data?.id ?? null }
-  } catch (err) {
-    return { ok: false, reason: `x reply: ${err.message}` }
-  }
-}
-
-export { headline }

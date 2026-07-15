@@ -1,9 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { dataDir } from './paths.js'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const dataDir = join(root, 'data')
 const dbPath = join(dataDir, 'trades.json')
 
 function load() {
@@ -32,7 +30,9 @@ export function addTrade(swap) {
     thesis: '',
     alertedAt: null,
     enrichedAt: null,
-    results: null,
+    results: null, // the alert post
+    thesisResults: null, // each thesis post is separate, never an edit
+    thesisPosts: 0,
   }
   db.trades.unshift(trade)
   save(db)
