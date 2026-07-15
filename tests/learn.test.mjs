@@ -80,6 +80,50 @@ check('rejects a url', proseOf('https://example.com/some/long/path/here') === 0)
 check('rejects a single long token', proseOf('supercalifragilisticexpialidocious') === 0)
 check('accepts a sentence', proseOf('small size, invalidation below launch VWAP') === 1)
 
+console.log('\nA thesis survives fomo\'s telemetry flood\n')
+{
+  const { isNoise, getSeen } = await import('../extension/lib/learn.js')
+  reset()
+
+  // Exactly what a real install logged: a torrent of market data and telemetry,
+  // one thesis buried in it. In a single 40-item FIFO the thesis was evicted
+  // within seconds of being captured.
+  const noise = [
+    'https://app-actions2.fomo.family/?ddforward=%2Fapi%2Fv2%2Frum',
+    'https://app-actions.fomo.family/flags/?v=2',
+    'https://solana-provider-1.prod-edge.fomo.family/',
+    'https://prod-api.fomo.family/proxy/filterTokens',
+    'https://prod-api.fomo.family/proxy/getBars',
+    'https://prod-api.fomo.family/proxy/tokenDetails',
+    'https://prod-api.fomo.family/proxy/tokenWarnings',
+    'https://prod-api.fomo.family/hodlers/friends',
+  ]
+  for (const url of noise) check(`treated as noise: ${new URL(url).pathname.slice(0, 24)}`, isNoise(url))
+  check('but /trades/comment is NOT noise', !isNoise('https://prod-api.fomo.family/trades/comment'))
+
+  // The thesis, then 200 more requests of chatter on top of it.
+  await record({
+    transport: 'fetch', method: 'POST',
+    url: 'https://prod-api.fomo.family/trades/comment',
+    body: { tradeId: 'abc123', comment: 'Reflexive floor while the story is still being told.' },
+    at: Date.now(),
+  })
+  for (let i = 0; i < 200; i++) {
+    await record({
+      transport: 'fetch', method: 'POST',
+      url: noise[i % noise.length],
+      body: { session: 'abc', view: 'token page loaded ok', n: String(i) },
+      at: Date.now() + i,
+    })
+  }
+
+  const all = await listCandidates()
+  const thesis = all.find((c) => c.pattern === 'prod-api.fomo.family/trades/comment')
+  check('the thesis is STILL there after 200 noisy requests', Boolean(thesis), `${all.length} candidates left`)
+  check('and it is offered as a guess', thesis?.fields?.[0]?.path === 'comment')
+  check('the tally still counted every request', (await getSeen()).total === 201)
+}
+
 console.log('\nA learned field is believed, not re-guessed\n')
 {
   const learned = { pattern: 'prod-api.fomo.family/trades/comment', field: 'comment' }

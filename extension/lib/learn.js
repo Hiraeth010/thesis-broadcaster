@@ -7,7 +7,31 @@
 // asks for it.
 
 const MAX_CANDIDATES = 40
+const MAX_OTHERS = 15
 const MAX_SEEN = 40
+
+// fomo fires telemetry and market data constantly — filterTokens, getBars,
+// tokenDetails, RUM, analytics — while a thesis fires once. Recording those as
+// candidates buried the one request that matters within seconds.
+const NOISE_HOSTS = [/^app-actions\d*\./, /^solana-provider/, /^bundler/, /^evm-data/]
+const NOISE_PATHS = [
+  /^\/proxy\//,
+  /^\/hodlers\//,
+  /^\/tokenAllowList/,
+  /^\/feed\/(react|unreact)/,
+  /^\/v2\/users\/pushToken/,
+]
+
+export function isNoise(url) {
+  try {
+    const u = new URL(url)
+    if (NOISE_HOSTS.some((re) => re.test(u.hostname))) return true
+    if (NOISE_PATHS.some((re) => re.test(u.pathname))) return true
+    return false
+  } catch {
+    return false
+  }
+}
 // A thesis endpoint fires once; RPC and analytics chatter fires constantly, so
 // the interesting request scrolls away fast if the buffer is small.
 const MAX_FIELDS = 14
@@ -118,7 +142,7 @@ export function describe(payload) {
  */
 export async function record(payload) {
   const entry = describe(payload)
-  const { candidates, seen } = await chrome.storage.local.get(['candidates', 'seen'])
+  const { candidates, others, seen } = await chrome.storage.local.get(['candidates', 'others', 'seen'])
 
   const tally = seen ?? { total: 0, json: 0, byTransport: {}, recent: [] }
   tally.total++
@@ -130,18 +154,31 @@ export async function record(payload) {
   ].slice(0, MAX_SEEN)
   await chrome.storage.local.set({ seen: tally })
 
-  // Kept if it has ANY pickable string, not just prose — otherwise the real
-  // thesis request is thrown away before the user ever gets to choose it.
+  // Telemetry and market data can never be a thesis, and there is a torrent of
+  // it. Counted above, but never allowed into the picker.
+  if (isNoise(payload.url)) return entry
   if (!entry.allFields.length) return entry
 
-  const next = [entry, ...(candidates ?? [])].slice(0, MAX_CANDIDATES)
-  await chrome.storage.local.set({ candidates: next })
+  // Two buckets on purpose. A thesis fires once; fomo's chatter fires dozens of
+  // times a minute. In one shared FIFO the thesis was evicted within seconds of
+  // being captured — which is exactly the bug this splits apart. Noise can now
+  // only ever evict noise.
+  if (entry.fields.length) {
+    await chrome.storage.local.set({
+      candidates: [entry, ...(candidates ?? [])].slice(0, MAX_CANDIDATES),
+    })
+  } else {
+    await chrome.storage.local.set({
+      others: [entry, ...(others ?? [])].slice(0, MAX_OTHERS),
+    })
+  }
   return entry
 }
 
+/** Prose guesses first, then anything pickable by hand. */
 export async function listCandidates() {
-  const { candidates } = await chrome.storage.local.get('candidates')
-  return candidates ?? []
+  const { candidates, others } = await chrome.storage.local.get(['candidates', 'others'])
+  return [...(candidates ?? []), ...(others ?? [])]
 }
 
 export async function getSeen() {
@@ -150,7 +187,11 @@ export async function getSeen() {
 }
 
 export async function clearCandidates() {
-  await chrome.storage.local.set({ candidates: [], seen: { total: 0, json: 0, byTransport: {}, recent: [] } })
+  await chrome.storage.local.set({
+    candidates: [],
+    others: [],
+    seen: { total: 0, json: 0, byTransport: {}, recent: [] },
+  })
 }
 
 /**
