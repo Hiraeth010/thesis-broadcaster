@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>thesis broadcaster</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b0f;
+        --panel: #14141b;
+        --line: #26262f;
+        --text: #e7e7ea;
+        --muted: #8b8b96;
+        --buy: #22c55e;
+        --sell: #ef4444;
+        --accent: #6366f1;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        padding: 32px 20px 64px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+      h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+      .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .tag {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+        padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
+      }
+      .buy { color: var(--buy); }
+      .sell { color: var(--sell); }
+      .title { font-weight: 600; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .meta a { color: var(--muted); }
+      textarea {
+        width: 100%; margin-top: 12px; min-height: 90px; resize: vertical;
+        background: #0e0e14; color: var(--text);
+        border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+        font: inherit;
+      }
+      textarea:focus { outline: none; border-color: var(--accent); }
+      .actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+      button {
+        font: inherit; font-weight: 500; cursor: pointer;
+        border-radius: 8px; padding: 8px 14px;
+        border: 1px solid var(--line); background: #1c1c25; color: var(--text);
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+      .done { border-color: #1f3d2b; }
+      .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+      code { background: #0e0e14; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>thesis broadcaster</h1>
+        <span id="channels" class="status"></span>
+      </header>
+      <div class="sub">Trades land here from your wallet. Nothing goes out until you approve it.</div>
+      <div id="list"></div>
+    </div>
+
+    <script type="module">
+      const list = document.getElementById('list')
+      const channelsEl = document.getElementById('channels')
+
+      // Drafts live here so the poll can never clobber text being typed.
+      const drafts = new Map()
+      let lastKey = ''
+
+      const fmt = (n) =>
+        !Number.isFinite(n) ? '0'
+        : Math.abs(n) < 0.0001 && n !== 0 ? n.toExponential(2)
+        : n.toLocaleString('en-US', { maximumSignificantDigits: 6 })
+
+      async function load({ force = false } = {}) {
+        const res = await fetch('/api/trades')
+        const { trades, channels } = await res.json()
+
+        const on = Object.entries(channels).filter(([, v]) => v).map(([k]) => k)
+        channelsEl.textContent = on.length ? `channels: ${on.join(', ')}` : 'no channels configured'
+
+        // Only touch the DOM when the list actually changed, otherwise the poll
+        // would steal focus from the textarea every few seconds.
+        const key = trades.map((t) => `${t.id}:${t.status}`).join('|')
+        if (!force && key === lastKey) return
+        lastKey = key
+
+        if (!trades.length) {
+          list.innerHTML = `<div class="empty">No trades yet.<br />Waiting on <code>POST /webhook</code>.</div>`
+          return
+        }
+
+        list.innerHTML = ''
+        for (const t of trades) list.append(render(t))
+      }
+
+      function render(t) {
+        const el = document.createElement('div')
+        el.className = 'card' + (t.status === 'broadcast' ? ' done' : '')
+
+        const sideClass = t.side === 'BUY' ? 'buy' : 'sell'
+        const verb = t.side === 'BUY' ? 'Bought' : 'Sold'
+        const when = new Date(t.timestamp).toLocaleString()
+
+        el.innerHTML = `
+          <div class="row">
+            <span class="tag ${sideClass}">${t.side}</span>
+            <span class="title">${verb} ${fmt(t.asset.amount)} ${t.asset.symbol}
+              for ${fmt(t.quote.amount)} ${t.quote.symbol}</span>
+          </div>
+          <div class="meta">
+            ${fmt(t.price)} ${t.quote.symbol} · ${t.source} · ${when} ·
+            <a href="https://solscan.io/tx/${t.signature}" target="_blank" rel="noreferrer">tx</a>
+          </div>
+        `
+
+        if (t.status === 'pending') {
+          const ta = document.createElement('textarea')
+          ta.placeholder = 'Why did you take this trade?'
+          ta.value = drafts.get(t.id) ?? t.thesis ?? ''
+          ta.addEventListener('input', () => drafts.set(t.id, ta.value))
+
+          const actions = document.createElement('div')
+          actions.className = 'actions'
+
+          const send = document.createElement('button')
+          send.className = 'primary'
+          send.textContent = 'Broadcast'
+
+          const skip = document.createElement('button')
+          skip.textContent = 'Skip'
+
+          const status = document.createElement('span')
+          status.className = 'status'
+
+          send.onclick = async () => {
+            if (!ta.value.trim()) {
+              status.textContent = 'write a thesis first'
+              return
+            }
+            send.disabled = skip.disabled = true
+            status.textContent = 'sending…'
+            await fetch(`/api/trades/${t.id}/thesis`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ thesis: ta.value }),
+            })
+            const res = await fetch(`/api/trades/${t.id}/broadcast`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({}),
+            })
+            const json = await res.json()
+            if (!res.ok) {
+              status.textContent = json.error ?? 'failed'
+              send.disabled = skip.disabled = false
+              return
+            }
+            const failed = Object.entries(json.results ?? {}).filter(([, v]) => !v.ok && !v.skipped)
+            if (failed.length) {
+              status.textContent = failed.map(([k, v]) => `${k}: ${v.reason}`).join(' · ')
+            }
+            drafts.delete(t.id)
+            load({ force: true })
+          }
+
+          skip.onclick = async () => {
+            await fetch(`/api/trades/${t.id}/skip`, { method: 'POST' })
+            drafts.delete(t.id)
+            load({ force: true })
+          }
+
+          actions.append(send, skip, status)
+          el.append(ta, actions)
+        } else {
+          const note = document.createElement('div')
+          note.className = 'meta'
+          const detail = t.results
+            ? Object.entries(t.results)
+                .map(([k, v]) => `${k}: ${v.ok ? 'sent' : v.skipped ? 'skipped' : 'failed'}`)
+                .join(' · ')
+            : ''
+          note.textContent = `${t.status}${detail ? ' — ' + detail : ''}`
+          el.append(note)
+        }
+
+        return el
+      }
+
+      load()
+      setInterval(load, 5000)
+    </script>
+  </body>
+</html>
