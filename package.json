@@ -1,6 +1,6 @@
 {
   "name": "thesis-broadcaster",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Broadcast your trade thesis to Discord, Telegram and X, triggered by your own on-chain swaps.",
