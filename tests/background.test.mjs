@@ -359,6 +359,39 @@ console.log('\nA second thesis on the same trade still posts\n')
   check('no third message', discordPosts.length === before + 2)
 }
 
+console.log('\nA hung RPC cannot stall a poll forever\n')
+{
+  // fetch has no default timeout. Without an abort, a connection that never
+  // answers hangs the poll indefinitely and the service worker can be torn
+  // down mid-flight — the thesis is simply never sent, silently.
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : {}
+    if (body.method === 'getSlot') {
+      // never resolves, but must honour the abort signal
+      return new Promise((_, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const e = new Error('aborted')
+          e.name = 'AbortError'
+          reject(e)
+        })
+      })
+    }
+    return realFetch(url, init)
+  }
+
+  const t0 = Date.now()
+  const r = await send({ type: 'checkRpc' })
+  const elapsed = Date.now() - t0
+
+  check('it gives up instead of hanging', r?.ok === false, JSON.stringify(r))
+  check('and says it timed out', /timed out/.test(r?.reason ?? ''), r?.reason)
+  // 4 tries x 15s + backoff would be ~65s; anything near 120s means no abort.
+  check(`bounded (~${Math.round(elapsed / 1000)}s, well under a stall)`, elapsed < 90_000, `${elapsed}ms`)
+
+  globalThis.fetch = realFetch
+}
+
 console.log('\nA thesis still posts when the balance cannot be read\n')
 {
   // The balance is a nice-to-have. If the RPC is down, the thesis must still go

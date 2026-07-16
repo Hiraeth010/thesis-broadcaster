@@ -31,21 +31,34 @@ function fail(message, retriable) {
   return err
 }
 
+// A hung connection is worse than a failed one: without this the whole poll
+// stalls indefinitely, and an MV3 service worker can be torn down mid-flight
+// with the thesis never sent. fetch has no default timeout.
+const TIMEOUT_MS = 15_000
+
 async function rpc(settings, method, params, { tries = 4 } = {}) {
   let wait = 600
   for (let i = 1; ; i++) {
     let res
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS)
     try {
       res = await fetch(rpcUrl(settings), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal: ctl.signal,
       })
     } catch (err) {
-      if (i >= tries) throw fail(`rpc unreachable: ${err.message}`, true)
+      const timedOut = err.name === 'AbortError'
+      if (i >= tries) {
+        throw fail(timedOut ? `rpc timed out after ${TIMEOUT_MS / 1000}s` : `rpc unreachable: ${err.message}`, true)
+      }
       await sleep(wait)
       wait *= 2
       continue
+    } finally {
+      clearTimeout(timer)
     }
 
     const body = await res.text()

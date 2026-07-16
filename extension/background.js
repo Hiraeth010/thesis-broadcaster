@@ -63,15 +63,27 @@ async function ingest(settings, swap) {
   return trade
 }
 
+// A slow poll (retries and backoff can reach ~a minute) would otherwise overlap
+// the next alarm, and two walks of the same cursor can double-post.
+let polling = false
+
 async function runPoll() {
+  if (polling) {
+    console.log('[poll] previous run still going, skipping this tick')
+    return
+  }
   const settings = await loadSettings()
   if (!settings.wallet) return
+
+  polling = true
   try {
     await poll(settings, (swap) => ingest(settings, swap))
   } catch (err) {
     console.log(`[poll] ${err.message}`)
     await setStatus({ lastError: err.message })
     await badge('!', '#ef4444')
+  } finally {
+    polling = false
   }
 }
 
