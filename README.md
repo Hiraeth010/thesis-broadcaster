@@ -174,26 +174,34 @@ node tests/manifest.test.mjs  # manifest, icons, module graph
 ```
 
 - `background.test.mjs` loads the **real service worker** with a stubbed `chrome` and
-  stubbed network, then drives it as Chrome would: baseline → swap → alert → thesis →
-  dedupe, plus secret round-trip safety.
+  stubbed network, then drives it as Chrome would: baseline → swap recorded but *not*
+  posted → thesis → dedupe. Also pins the things that bit hardest: a hung RPC must give
+  up rather than stall, a failed balance read must still post, and secrets must never
+  round-trip back over themselves.
 - `oauth1.test.mjs` pins the hand-rolled OAuth 1.0a signing to
   [X's own published vector](https://developer.x.com/en/docs/authentication/oauth-1-0a/creating-a-signature).
   `twitter-api-v2` is Node-only, so signing is done with Web Crypto — and hand-rolled
   crypto is exactly where silent bugs live.
-- `parse.test.mjs`, `learn.test.mjs` — parser and thesis-detection edge cases.
+- `learn.test.mjs` — thesis detection, including a thesis surviving 200 telemetry
+  requests, which it previously did not.
+- `hook.test.mjs` — every shape fomo could post a thesis in (string body, `Request`
+  object, `URLSearchParams`).
+- `parse.test.mjs`, `byline.test.mjs`, `manifest.test.mjs`.
 
 ## Status
 
-**Verified:** 44 checks across 4 suites, including the real service worker driven
-end to end. The fetch/XHR hook was verified in a live browser (captures both, resolves
-relative URLs, ignores GETs, doesn't break the page).
+**Verified:** 179 checks across 7 suites, plus 31 manifest/icon checks — including the
+real service worker driven end to end. The fetch/XHR/WebSocket hook was verified in a
+live browser (captures all three, resolves relative URLs, ignores GETs, doesn't break
+the page). The balance read was verified against the live chain through the real code.
 
-**Not verified:** none of it has been loaded into Chrome against a live fomo session.
-The payload shape the hook will meet is unknown — which is exactly why it learns
-instead of guessing. X has never posted for real; its signing matches X's vector, but
-that isn't the same as X accepting it. Telegram has never run against a live bot.
+**Working against real fomo:** the full loop has run — a thesis written on fomo.family
+reached a live Telegram channel with the token name, holdings, CA and handle. Discord
+and Telegram are both confirmed against real channels.
 
-Expect the first run to need a round of fixing.
+**Not verified:** X has never posted for real. Its signing reproduces X's own published
+vector exactly, but that isn't the same as X accepting the request — and since Feb 2026
+finding out costs $0.015. Nothing else is outstanding.
 
 ### History
 
