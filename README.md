@@ -27,8 +27,12 @@ you trade on fomo
         ↓  the swap is recorded quietly — nothing is posted
 you write a thesis on fomo
         ↓
-it posts: your words, the token, the CA, your handle
+it posts: what you hold, your words, the CA, your handle
 ```
+
+A post says **"Holding 6,250,000 Haerin"** — your balance at the moment you wrote the
+thesis, not the size of one swap. No buy/sell, no dollar amounts, no transaction link.
+The chart points at fomo's own token page.
 
 **Your trades are never announced on their own.** The only thing that goes out is a
 thesis you chose to write. The chain is still read, but only so the post can carry the

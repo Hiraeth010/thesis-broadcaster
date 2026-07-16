@@ -1,5 +1,5 @@
 import {
-  byline, chartUrl, contractAddress, headline, profileUrl, referralFor, solscanUrl, tokenName,
+  byline, chartUrl, contractAddress, headline, profileUrl, referralFor, tokenName,
 } from '../format.js'
 
 const API = 'https://api.telegram.org'
@@ -23,9 +23,7 @@ function bodyFor(trade, variant, referralLink, who, whoUrl) {
     // Telegram won't nest <a> inside <code>, and tap-to-copy beats a link for a
     // CA — so the address stays copyable and the chart gets its own link.
     lines.push(`CA: <code>${escapeHtml(mint)}</code>`)
-    lines.push(`<a href="${chartUrl(mint)}">chart</a> · <a href="${solscanUrl(trade.signature)}">tx</a>`)
-  } else {
-    lines.push(`<a href="${solscanUrl(trade.signature)}">view tx</a>`)
+    lines.push(`<a href="${chartUrl(mint)}">chart</a>`)
   }
 
   if (referralLink) lines.push(escapeHtml(referralLink))

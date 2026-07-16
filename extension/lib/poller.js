@@ -49,8 +49,17 @@ async function rpc(settings, method, params, { tries = 4 } = {}) {
     }
 
     const body = await res.text()
-    if (res.status === 429 || /"code":\s*429/.test(body)) {
+    if (res.status === 429 || /"code":\s*429|Rate limit exceeded/i.test(body)) {
       if (i >= tries) throw fail('rate-limited by the public RPC — add a free Helius key in Setup', true)
+      await sleep(wait)
+      wait *= 2
+      continue
+    }
+
+    // 5xx is a gateway hiccup, not an answer. These were marked retriable but
+    // thrown on the first try, so a transient 504 killed the whole call.
+    if (res.status >= 500) {
+      if (i >= tries) throw fail(`rpc ${res.status} after ${tries} tries`, true)
       await sleep(wait)
       wait *= 2
       continue
@@ -75,6 +84,24 @@ async function rpc(settings, method, params, { tries = 4 } = {}) {
     }
     return json.result
   }
+}
+
+/**
+ * How much of a mint the wallet holds right now. Summed across token accounts —
+ * one wallet can hold the same mint in several, and reading only the first
+ * would under-report.
+ */
+export async function getTokenBalance(settings, owner, mint) {
+  const res = await rpc(settings, 'getTokenAccountsByOwner', [
+    owner,
+    { mint },
+    { encoding: 'jsonParsed' },
+  ])
+  let total = 0
+  for (const acct of res?.value ?? []) {
+    total += Number(acct?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0)
+  }
+  return total
 }
 
 export async function checkRpc(settings) {

@@ -41,6 +41,7 @@ const SIG = 'sigLiveTest111111111111111111111111111111111'
 
 const discordPosts = []
 let rpcSigs = []
+let tokenBalanceFails = false
 
 const json = (obj) => new Response(JSON.stringify(obj), { status: 200, headers: { 'content-type': 'application/json' } })
 
@@ -54,6 +55,19 @@ globalThis.fetch = async (url, init) => {
   }
   if (u.includes('lite-api.jup.ag')) return json([{ id: PUNCH, symbol: 'Pnut', name: 'Peanut the Squirrel' }])
   if (u.includes('dexscreener')) return json({ pairs: [] })
+  if (body.method === 'getTokenAccountsByOwner') {
+    // Deliberately NOT the swap amount: the wallet already held some, so the
+    // post must report the balance, not the size of one trade.
+    if (tokenBalanceFails) return new Response('gateway', { status: 504 })
+    return json({
+      result: {
+        value: [
+          { account: { data: { parsed: { info: { tokenAmount: { uiAmount: 6_000_000 } } } } } },
+          { account: { data: { parsed: { info: { tokenAmount: { uiAmount: 250_000 } } } } } },
+        ],
+      },
+    })
+  }
   if (body.method === 'getSignaturesForAddress') return json({ result: rpcSigs })
   if (body.method === 'getSlot') return json({ result: 123456 })
   if (body.method === 'getTransaction') {
@@ -161,16 +175,21 @@ console.log('\nToken name, clickable CA, and byline\n')
 
 const post = discordPosts[0]
 check('headline uses the real symbol, not the mint', post.title.includes('Pnut'), post.title)
+// The swap was 41,666.67 Pnut, but the wallet holds 6,250,000 across two token
+// accounts. The post must report what's held, not what was traded.
+check('headline reports HOLDINGS, not the trade size', post.title === 'Holding 6,250,000 Pnut', post.title)
 check(
   'the token name is shown',
   post.fields.some((f) => f.name === 'Token' && f.value === 'Peanut the Squirrel'),
   JSON.stringify(post.fields)
 )
-check('the post links to the chart', post.url.includes('dexscreener.com/solana/' + PUNCH))
-check('the tx is still reachable', post.fields.some((f) => f.value.includes('solscan.io/tx/')))
+check('the post links to fomo\'s own chart', post.url === 'https://fomo.family/tokens/solana/' + PUNCH, post.url)
+check('no tx link anywhere', !JSON.stringify(post).includes('solscan.io'))
+check('no dollar amounts', !JSON.stringify(post).includes('USDC'), JSON.stringify(post.fields))
+check('no Bought/Sold', !/Bought|Sold/.test(JSON.stringify(post)))
 
 const ca = post.fields.find((f) => f.name === 'CA')
-check('the CA is clickable', ca.value.includes('](https://dexscreener.com/solana/' + PUNCH + ')'), ca.value)
+check('the CA links to the fomo chart', ca.value.includes('](https://fomo.family/tokens/solana/' + PUNCH + ')'), ca.value)
 check('and still copyable as inline code', ca.value.includes('`' + PUNCH + '`'), ca.value)
 
 // A poll can't be used to trigger a post any more — only a thesis can.
@@ -338,6 +357,32 @@ console.log('\nA second thesis on the same trade still posts\n')
   const dupe = await post('Revised call: adding here, same thesis.')
   check('but the identical text is still deduped', dupe.broadcast === false, JSON.stringify(dupe))
   check('no third message', discordPosts.length === before + 2)
+}
+
+console.log('\nA thesis still posts when the balance cannot be read\n')
+{
+  // The balance is a nice-to-have. If the RPC is down, the thesis must still go
+  // out — just without the "Holding …" line, rather than not at all.
+  tokenBalanceFails = true
+  const before = discordPosts.length
+  rpcSigs = [{ signature: 'sigNoBal666666666666666666666666666666666', err: null }]
+  await send({ type: 'pollNow' })
+
+  const r = await send({
+    type: 'observed',
+    payload: {
+      method: 'POST',
+      url: 'https://prod-api.fomo.family/trades/comment',
+      body: { tradeId: 'zz', comment: 'Balance lookup is down but this must still post.' },
+      at: Date.now(),
+    },
+  })
+  check('the thesis still went out', r.broadcast === true, JSON.stringify(r))
+  check('a message was sent', discordPosts.length === before + 1)
+  check('headline degrades to the token alone', discordPosts.at(-1).title === 'Pnut', discordPosts.at(-1).title)
+  check('no fabricated holding number', !/Holding/.test(discordPosts.at(-1).title))
+  check('the thesis text is intact', discordPosts.at(-1).description?.includes('must still post'))
+  tokenBalanceFails = false
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`)

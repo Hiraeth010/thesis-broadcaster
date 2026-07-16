@@ -9,13 +9,20 @@ export function solscanUrl(signature) {
   return `https://solscan.io/tx/${signature}`
 }
 
+/** fomo's own token page — same URL you're looking at when you write the thesis. */
 export function chartUrl(mint) {
-  return `https://dexscreener.com/solana/${mint}`
+  return `https://fomo.family/tokens/solana/${mint}`
 }
 
+/**
+ * What you hold, not what you traded. A post says "Holding 4,039,064.84 Haerin"
+ * — no buy/sell, no dollar amounts. If the balance couldn't be read, fall back
+ * to the token alone rather than inventing a number.
+ */
 export function headline(trade) {
-  const verb = trade.side === 'BUY' ? 'Bought' : 'Sold'
-  return `${verb} ${fmtNum(trade.asset.amount)} ${trade.asset.symbol} for ${fmtNum(trade.quote.amount)} ${trade.quote.symbol}`
+  const held = trade.holdings
+  if (typeof held !== 'number' || !Number.isFinite(held)) return trade.asset.symbol
+  return `Holding ${fmtNum(held)} ${trade.asset.symbol}`
 }
 
 /** The token's full name, only when it says more than the ticker already does. */

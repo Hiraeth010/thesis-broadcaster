@@ -1,6 +1,6 @@
 import { loadSettings, saveSettings, publicSettings, enabledChannels, KNOWN_FOMO_THESIS } from './lib/settings.js'
 import { addTrade, getTrade, listTrades, updateTrade, setStatus, getStatus, clearCursor } from './lib/store.js'
-import { poll, checkRpc, rpcUrl, redactRpc, PUBLIC_RPC } from './lib/poller.js'
+import { poll, checkRpc, rpcUrl, redactRpc, getTokenBalance, PUBLIC_RPC } from './lib/poller.js'
 import { resolveToken } from './lib/tokens.js'
 import { sendAll, anyOk } from './lib/broadcast/index.js'
 import { discoverChatId } from './lib/broadcast/telegram.js'
@@ -95,7 +95,18 @@ async function tradeForThesis(mint) {
 
 async function postThesis(settings, trade, thesis) {
   const healed = await withToken(trade)
-  const updated = await updateTrade(healed.id, { thesis })
+
+  // Read at post time, not at ingest: the post says what you hold *now*, which
+  // includes everything you already had — not just the size of one swap.
+  let holdings = null
+  try {
+    holdings = await getTokenBalance(settings, settings.wallet, healed.asset.mint)
+  } catch (err) {
+    // A missing balance drops the "Holding …" line; it must never block the post.
+    console.log(`[thesis] could not read ${healed.asset.symbol} balance: ${err.message}`)
+  }
+
+  const updated = await updateTrade(healed.id, { thesis, holdings })
   const results = await sendAll(settings, updated, 'thesis')
   const ok = anyOk(results)
   await updateTrade(trade.id, {

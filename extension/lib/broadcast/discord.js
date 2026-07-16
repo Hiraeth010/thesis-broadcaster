@@ -1,29 +1,27 @@
 import {
-  byline, chartUrl, contractAddress, fmtNum, headline, profileUrl, referralFor, solscanUrl, tokenName,
+  byline, chartUrl, contractAddress, headline, profileUrl, referralFor, tokenName,
 } from '../format.js'
 
 function embedFor(trade, variant, referralLink, who, whoUrl) {
   const isThesis = variant === 'thesis'
   const mint = contractAddress(trade)
 
+  // No side, no price, no venue, no tx: a thesis is about what you hold and
+  // why, not a receipt for a trade.
   const embed = {
     title: headline(trade),
     url: chartUrl(mint),
     description: isThesis ? trade.thesis?.trim() || undefined : undefined,
-    color: trade.side === 'BUY' ? 0x22c55e : 0xef4444,
+    color: 0x6366f1,
     // An embed author renders as a link when given a url, so the handle points
     // at your fomo profile.
     author: who ? { name: who, url: whoUrl || undefined } : undefined,
-    fields: [
-      { name: 'Side', value: trade.side, inline: true },
-      { name: 'Price', value: `${fmtNum(trade.price)} ${trade.quote.symbol}`, inline: true },
-      { name: 'Venue', value: `[${trade.source}](${solscanUrl(trade.signature)})`, inline: true },
-    ],
+    fields: [],
     timestamp: new Date(trade.timestamp).toISOString(),
   }
 
   const name = tokenName(trade)
-  if (name) embed.fields.unshift({ name: 'Token', value: name, inline: false })
+  if (name) embed.fields.push({ name: 'Token', value: name, inline: false })
 
   // CA only on the thesis post. [`code`](url) renders as inline code that is
   // still clickable — a plain link can't be copied, plain code can't be tapped.
